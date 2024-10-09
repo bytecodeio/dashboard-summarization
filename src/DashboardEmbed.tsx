@@ -8,9 +8,11 @@ import { SummaryDataContext } from './contexts/SummaryDataContext';
 export const EmbedContainer = styled.div`
   width: 50%;
   height: 95vh;
+  z-index: 11;
   & > iframe {
     width: 100%;
     height: 100%;
+    z-index: 11;
   }
 `
 
@@ -40,7 +42,7 @@ export const DashboardEmbed: React.FC<any> = () => {
   return (
     <>
       <EmbedContainer>
-        {embedUrl && <iframe src={embedUrl} frameBorder="0" />}
+        {embedUrl && <iframe src={embedUrl} frameBorder="0" sandbox="allow-scripts allow-same-origin"/>}
       </EmbedContainer>
     </>
   )

@@ -31,6 +31,7 @@ import { hot } from 'react-hot-loader/root'
 
 import { DashboardSummarization } from './DashboardSummarization'
 import { DashboardEmbed } from './DashboardEmbed'
+import { QuerySuggestions } from './QuerySuggestions'
 import './App.css' // Import the CSS file
 
 export const App = hot(() => {
@@ -39,13 +40,17 @@ export const App = hot(() => {
   const [info, setInfo] = React.useState(true)
   const [message, setMessage] = React.useState('')
   const [dashboardURL, setDashboardURL] = React.useState<string>('')
+  const [additionalPrompt, setAdditionalPrompt] = React.useState<string>('')
+  const [querySuggestions, setQuerySuggestions] = React.useState<string>("[]")
 
   return (
     <ExtensionProvider>
-      <SummaryDataContext.Provider value={{ data, setData, formattedData, setFormattedData, info, setInfo, message, setMessage, dashboardURL, setDashboardURL}}>
+      <SummaryDataContext.Provider value={{ data, setData, formattedData, setFormattedData, info, setInfo, message, setMessage, dashboardURL, setDashboardURL, querySuggestions, setQuerySuggestions, additionalPrompt, setAdditionalPrompt}}>
         <div className="container">
           <DashboardSummarization />
           <DashboardEmbed />
+          <QuerySuggestions />
+          
         </div>
       </SummaryDataContext.Provider>
     </ExtensionProvider>

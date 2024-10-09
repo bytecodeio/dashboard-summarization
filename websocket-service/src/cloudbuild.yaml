@@ -9,3 +9,18 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push',
            'us-central1-docker.pkg.dev/easymetrics-looker-assistant/dashboard-summarization-docker-repo/websocketserviceimage']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'websocket-service'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/easymetrics-looker-assistant/dashboard-summarization-docker-repo/websocketserviceimage:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'

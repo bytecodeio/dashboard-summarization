@@ -60,19 +60,27 @@ export const DashboardSummarization: React.FC = () => {
   const [loadingDashboardMetadata, setLoadingDashboardMetadata] = useState<boolean>(false)
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [refinedData,setRefinedData] = useState([])
-  const { data, setData, formattedData, setFormattedData, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext)
+  const [dashboardId, setDashboardId] = useState<string | undefined>()
+  const [dashboardFilters, setDashboardFilters] = useState<Filters | undefined>()
+  const [showIntermediateResults, setShowIntermediateResults] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [nextStepsInstructions, setNextStepsInstructions] = useState<string>('')
+  const { data, setData, formattedData, setFormattedData, info, setInfo, message, setMessage, setDashboardURL, setQuerySuggestions, additionalPrompt, setAdditionalPrompt } = useContext(SummaryDataContext) as any
   const workspaceOauth = useWorkspaceOauth()
   const slackOauth = useSlackOauth()
   
-  const hostContext = lookerHostData?.route || ''
-  const urlPath = hostContext.split('?')[0].split('/') || []
-  const urlDashboardId = urlPath[urlPath.length - 1]
-  const filterPart = hostContext.split('?')[1] || ''
-  const urlParams = new URLSearchParams(filterPart)
-  const urlDashboardFilters: Filters = Object.fromEntries(urlParams.entries())
-  const dashboardId = urlDashboardId === 'extension.loader' ? tileDashboardId : urlDashboardId
-  const dashboardFilters = Object.keys(tileDashboardFilters || {}).length === 0 ? urlDashboardFilters : tileDashboardFilters
+  useEffect(() => {
+    const hostContext = lookerHostData?.route || ''
+    const urlPath = hostContext.split('?')[0].split('/') || []
+    const urlDashboardId = urlPath[urlPath.length - 1]
+    const filterPart = hostContext.split('?')[1] || ''
+    const urlParams = new URLSearchParams(filterPart)
+    const urlDashboardFilters: Filters = Object.fromEntries(urlParams.entries())
+    const newDashboardId = urlDashboardId === 'extension.loader' ? tileDashboardId : urlDashboardId
+    const newDashboardFilters = Object.keys(tileDashboardFilters || {}).length === 0 ? urlDashboardFilters : tileDashboardFilters
+    setDashboardId(newDashboardId)
+    setDashboardFilters(newDashboardFilters)
+  },[lookerHostData])
 
   useEffect(() => {
     
@@ -99,10 +107,17 @@ export const DashboardSummarization: React.FC = () => {
     }
 
     function onComplete(event:string) {
-      console.log(event)
-      !event.includes(`"key_points":`) && setFormattedData(event)
+      console.log('complete Summary: ',event)
+      // !event.includes(`"key_points":`) && 
+      setFormattedData(event)
         // formattedString.substring(0,formattedString.lastIndexOf('```'))
       setLoading(false)
+      setShowIntermediateResults(false)
+    }
+
+    function onQuerySuggestions(event:string) {
+      console.log('query suggestions: ',event)
+      setQuerySuggestions(event)
     }
 
     socket.connect()
@@ -111,6 +126,7 @@ export const DashboardSummarization: React.FC = () => {
     socket.on('disconnect', onDisconnect);
     socket.on('my broadcast event', onFooEvent);
     socket.on('my refine event', onRefineEvent);
+    socket.on('querySuggestions', onQuerySuggestions);
     socket.on('complete', onComplete)
 
     return () => {
@@ -118,6 +134,7 @@ export const DashboardSummarization: React.FC = () => {
       socket.off('disconnect', onDisconnect);
       socket.off('my broadcast event', onFooEvent);
       socket.off('my refine event', onRefineEvent);
+      socket.off('querySuggestions', onQuerySuggestions);
       socket.off('complete', onComplete);
     };
   }, [])
@@ -148,6 +165,7 @@ export const DashboardSummarization: React.FC = () => {
   }
 
   const fetchQueryMetadata = useCallback(async () => {
+    console.log('fetching query metadata for dashboardId',dashboardId)
     if(dashboardId) {
       setLoadingDashboardMetadata(true)
       setMessage("Loading Dashboard Metadata")
@@ -175,6 +193,7 @@ export const DashboardSummarization: React.FC = () => {
                   return undefined
                 }
               })
+              console.log('queries',queries)
             return queries
           }
         ).finally(() => {
@@ -199,16 +218,20 @@ export const DashboardSummarization: React.FC = () => {
 
 
   useEffect(() => {
+    console.log('fetching cached metadata')
     async function fetchCachedMetadata() {
       return await extensionSDK.localStorageGetItem(`${dashboardId}:${JSON.stringify(dashboardFilters)}`)
     }
     fetchCachedMetadata().then((cachedMetadata) => {
+      console.log('cached metadata 215',cachedMetadata)
       if (cachedMetadata !== null) {
+        console.log('fetching metadata 217')
        setDashboardURL(extensionSDK.lookerHostData?.hostUrl + "/embed/dashboards/" + dashboardId)
        setLoadingDashboardMetadata(false)
        setMessage("Loaded Dashboard Metadata from cache. Click 'Summarize Dashboard' to Generate report summary.")
        setDashboardMetadata(JSON.parse(cachedMetadata || '{}'))
-      } else if (tileHostData.dashboardRunState !== 'UNKNOWN') {
+      } else {
+        console.log('fetching metadata 222')
         setDashboardURL(extensionSDK.lookerHostData?.hostUrl + "/embed/dashboards/" + dashboardId)
         fetchQueryMetadata()
       }
@@ -280,15 +303,42 @@ export const DashboardSummarization: React.FC = () => {
       }
       <div style={{display:'flex', flexDirection:'column', justifyContent:'space-evenly',marginBottom:'1.6rem'}}>
       {!loading && data.length <= 0 ?
-      <div className="layout" style={{boxShadow:'0px',paddingBottom:'1.2rem', paddingTop: '1.2rem',height:'50%'}}>
+      <div className="layout" style={{boxShadow:'0px',paddingBottom:'1.2rem', paddingTop: '1.2rem',height:'50%', display: 'flex', flexDirection: 'column'}}>
         <div style={{display:'flex',flexDirection:'column'}}>
           <span style={{fontSize:'1.2rem',opacity:'1', width:'auto'}}>Dashboard Summarization</span>
           <span style={{fontSize:'0.9rem',opacity:'0.8', width:'60%'}}>Looker + Vertex AI</span>
         </div>
+        <textarea
+          placeholder="Please provide the LLM with optional, additional business advice on determining the next steps and queries based on what is seen in this dashboard. If you find a great prompt, save it and we'll add it for the future."
+          value={nextStepsInstructions}
+          onChange={(e) => setNextStepsInstructions(e.target.value)}
+          style={{
+            width: '100%',
+            height: '100px',
+            marginBottom: '1rem',
+            padding: '10px',
+            borderRadius: '5px',
+            border: '1px solid #ccc',
+            fontSize: '1rem',
+            fontFamily: 'Muli, sans-serif',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+          }}
+        />
         <button className='button' style={{lineHeight:'20px', padding:'6px 16px'}} disabled={loading || !socket.connected} onClick={() => {
           setLoading(true)
-          socket.emit("my event", JSON.stringify({...dashboardMetadata, instance:extensionSDK.lookerHostData?.hostOrigin?.split('https://')[1].split('.')[0]}))
-        }}>{loading ? 'Generating' : 'Generate'} <img  style={{opacity: loading ? 0.2 : 1}}src="https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/summarize_auto/default/20px.svg"/></button>
+          socket.emit("my event", JSON.stringify({...dashboardMetadata, nextStepsInstructions, instance:extensionSDK.lookerHostData?.hostOrigin?.split('https://')[1].split('.')[0]}))
+        }}>{loading ? 'Generating' : 'Generate'} <img  style={{
+          lineHeight: '20px',
+          padding: '10px 20px',
+          marginTop: '1rem',
+          backgroundColor: '#007bff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer',
+          fontSize: '1rem',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+        }} src="https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/summarize_auto/default/20px.svg"/></button>
       </div>
       :<></>
       }
@@ -326,9 +376,21 @@ export const DashboardSummarization: React.FC = () => {
       ? 
       <div style={{height:'90%',width:'90%', marginBottom:'1rem',paddingLeft:'1rem'}}>
         <div className="summary-scroll" >
-        <div className='progress'></div>
-          <MarkdownComponent data={data}/>
-        </div>
+        <div className="progress"></div>
+            <button onClick={() => setShowIntermediateResults(!showIntermediateResults)}>
+              {showIntermediateResults ? 'Hide' : 'Show'} Intermediate Results
+            </button>
+            {showIntermediateResults && <MarkdownComponent data={data} />}
+            {formattedData && (
+              <div>
+                  {typeof formattedData === 'string' ? (
+                    <MarkdownComponent data={[formattedData]} />
+                  ) : (
+                    <pre>{JSON.stringify(formattedData, null, 2)}</pre>
+                  )}
+              </div>
+            )}
+          </div>
       </div>
       :
       <div style={{
@@ -344,6 +406,7 @@ export const DashboardSummarization: React.FC = () => {
         {loading && data.length <= 0 ? <GenerativeLogo /> : <LandingPage />}
       </div>
       }
+
     </div>
     </div>
   )
