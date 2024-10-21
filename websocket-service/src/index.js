@@ -53,18 +53,115 @@ async function runLookerQuery(sdk, data) {
         const { model, view, fields, pivots, fill_fields, filters, sorts, limit, column_limit, total, row_total, subtotals, dynamic_fields } = query
         const value = await sdk.ok(sdk.run_inline_query({
             body: { model, view, fields, pivots, fill_fields, filters, sorts, limit: 200, column_limit, total, row_total, subtotals, dynamic_fields },
-            result_format: 'csv',
+            result_format: 'json',
             cache: true,
             apply_formatting: true,
             limit: 200
         }))
-
         return value
     } catch (e) {
         console.log('There was an error calling Looker: ', e)
     }
 }
 
+async function runLookerQueries(sdk, queries) {
+    const queryResults = [];
+    for (const query of queries) {
+        const queryData = await runLookerQuery(sdk, query.queryBody);
+        queryResults.push({ title: query.title, data: queryData, note_text: query.note_text });
+    }
+    return queryResults;
+}
+
+// for the 1-shot summary:
+async function generateSummary(generativeModel, queryResults, nextStepsInstructions) {
+    const querySummaries = queryResults.map(result => {
+        return `
+        ## ${result.title} \n
+        ${result.note_text ? "Query Note: " + result.note_text : ''} \n
+        Query Data: ${result.data} \n
+        `;
+    }).join('\n');
+
+    const finalPromptData = `
+    You are a specialized answering assistant that can summarize a Looker dashboard and the underlying data and propose operational next steps drawing conclusions from the Query Details listed above. Follow the instructions below:
+
+    Please highlight the findings of all of the query data here. All responses MUST be based on the actual information returned by these queries: \n                            
+    data: ${querySummaries}
+
+    For example, use the names of the locations in the data series (like Seattle, Indianapolis, Chicago, etc) in recommendations regarding locations. Use the name of a process if discussing processes. Don't use row numbers to refer to any facility, process or location. This information should be sourced from the above data.
+    Surface the most important or notable details and combine next steps recommendations into one bulleted list of 2-6 suggestions. \n 
+    --------------
+    Here is an output format Example:
+        ---------------
+        
+        ## Web Traffic Over Time \n
+        This query details the amount of web traffic received to the website over the past 6 months. It includes a web traffic source field of organic, search and display
+        as well as an amount field detailing the amount of people coming from those sources to the website. \n
+        
+        > It looks like search historically has been driving the most user traffic with 9875 users over the past month with peak traffic happening in december at 1000 unique users.
+        Organic comes in second and display a distant 3rd. It seems that display got off to a decent start in the year, but has decreased in volume consistently into the end of the year.
+        There appears to be a large spike in organic traffic during the month of March a 23% increase from the rest of the year.\n
+        \n
+        
+        ## Next Steps
+        * Look into the data for the month of March to determine if there was an issue in reporting and/or what sort of local events could have caused the spike
+        * Continue investing into search advertisement with common digital marketing strategies. IT would also be good to identify/breakdown this number by campaign source and see what strategies have been working well for Search.
+        * Display seems to be dropping off and variable. Use only during select months and optimize for heavily trafficed areas with a good demographic for the site retention.\n
+        \n
+    -----------
+
+    Please add actionable next steps, both for immediate intervention, improved data gathering and further analysis of existing data.
+    Here are some tips for creating actionable next steps: \n
+    -----------
+    ${nextStepsInstructions}
+    -----------
+    
+    `;
+
+    const finalPrompt = {
+        contents: [{ role: 'user', parts: [{ text: finalPromptData }] }]
+    };
+
+    const formattedResp = await generativeModel.generateContent(finalPrompt);
+    return formattedResp.response.candidates[0].content.parts[0].text;
+}
+
+async function generateQuerySuggestions(generativeModel, queryResults, querySummaries, nextStepsInstructions) {
+    const querySuggestionsPromptData = `
+    You are an analyst that will generate potential next-step investigation queries in json format.
+    Please provide suggestions of queries or data exploration that could be done to further investigate the data. \n
+    The output should be a JSON array of strings, each string representing a query or data exploration suggestion. \n
+    These should address the potential next steps in analysis, with this criteria: ${nextStepsInstructions} \n
+    They should be actionable and should be able to be executed in Looker. \n
+    Here is data related to what is currently known and shown. These kind of queries do not need to be repeated: \n                            
+                    
+    data: ${queryResults} \n
+
+    Here are the previous analysis and next steps. Queries should be related to these next steps or issues:
+    ${querySummaries} \n
+
+    Please include a date filter in EVERY query request, by adding the last 30 days if there is no other relevant date filter.
+    Here is the desired output format for the response, with exactly three querySuggestion elements: \n
+    ---------
+    '''json
+    [
+        {"querySuggestion": "Show me the top XXX entries for YYY on October 13th, 2024"},
+        {"querySuggestion": "What are the lowest values for ZZZ, grouped by AAA, in the last 30 days?"},
+        {"querySuggestion": "What is the producitivity and standard deviation for the XXX facility for the past 3 months?"}
+    ]
+    '''
+    ----------
+    
+    `;
+
+    const querySuggestionsPrompt = {
+        contents: [{ role: 'user', parts: [{ text: querySuggestionsPromptData }] }]
+    };
+
+    const querySuggestionsResp = await generativeModel.generateContent(querySuggestionsPrompt);
+    return querySuggestionsResp.response.candidates[0].content.parts[0].text;
+}
 
 // Initialize Vertex with your Cloud project and location
 const vertexAI = new VertexAI({ project: process.env.PROJECT, location: process.env.REGION });
@@ -154,7 +251,6 @@ io.on('connection', async (socket) => {
 
             -----------
         
-            Use the example below to structure your response from a markdown standpoint. Do not verbatim copy the example text into your responses.
             Below are details/context on the dashboard and queries. Use this context to help inform your summary. Remember to keep these summaries concise, to the point and actionable. The data will be in CSV format. Take note of any pivots and the sorts on the result set when summarizing. \n
             
             Context
@@ -162,7 +258,6 @@ io.on('connection', async (socket) => {
             ${context}
             
             ----------
-            
             Make sure to always summarize the responses and not return the entire raw query data in the response. Remember to always include the summary attributes that are listed in the instructions above.
             `
             const prompt = {
@@ -374,6 +469,30 @@ io.on('connection', async (socket) => {
         })
     )
 
+    socket.on('one-shot', async (data) => {
+        try {
+            const settings = new NodeSettingsIniFile('', 'looker.ini', JSON.parse(data).instance);
+            const sdk = LookerNodeSDK.init40(settings);
+            const queries = JSON.parse(data).queries;
+            const nextStepsInstructions = JSON.parse(data).nextStepsInstructions;
+
+            // Run Looker queries
+            const queryResults = await runLookerQueries(sdk, queries);
+            console.log('Query Results:', queryResults);
+            console.log('Next Steps Instructions:', nextStepsInstructions);
+            // Generate comprehensive summary
+            const summary = await generateSummary(generativeModel, queryResults, nextStepsInstructions);
+
+            // Generate query suggestions
+            const querySuggestions = await generateQuerySuggestions(generativeModel, queryResults, summary, nextStepsInstructions);
+
+            // Emit the final result
+            socket.emit('one-shot-complete', { summary, querySuggestions });
+        } catch (error) {
+            console.error('Error in one-shot event:', error);
+            socket.emit('error', 'Error processing one-shot event.');
+        }
+    });
 
 
     socket.on('connect', () => {

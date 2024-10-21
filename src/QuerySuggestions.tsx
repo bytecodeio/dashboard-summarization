@@ -46,10 +46,8 @@ export const QuerySuggestions: React.FC = () => {
   
   // Replace ''' and '''json with empty strings
   const cleanedQuerySuggestions = querySuggestions.replace(/'''json|'''/g, '')
-    console.log('Cleaned Query Suggestions:', cleanedQuerySuggestions)
   // Parse the cleaned string as JSON
   const parsedQuerySuggestions: ParsedQuerySuggestions = JSON.parse(cleanedQuerySuggestions)
-  console.log('Parsed Query Suggestions:', parsedQuerySuggestions)
   return (
     <BoxContainer>
       {parsedQuerySuggestions.map((suggestion: ParsedQuerySuggestion, index: number) => (
