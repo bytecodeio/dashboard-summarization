@@ -52,6 +52,7 @@ export const DashboardSummarization: React.FC = () => {
   const [dashboardId, setDashboardId] = useState<string>('');
   const { data, setData, formattedData, setFormattedData, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
   const [loading, setLoading] = useState(false)
+  const [showQuerySummaries, setShowQuerySummaries] = useState(false)
   const workspaceOauth = useWorkspaceOauth()
   const slackOauth = useSlackOauth()
 
@@ -88,6 +89,12 @@ export const DashboardSummarization: React.FC = () => {
     if (dashboardId) {
       setLoadingDashboardMetadata(true)
       const { description, queries } = await fetchDashboardDetails(dashboardId, core40SDK, extensionSDK, dashboardFilters)
+      // Get additional description and queries from another dashboard and combine them
+        const { description: description2, queries: queries2 } = await fetchDashboardDetails('574', core40SDK, extensionSDK, dashboardFilters)
+        // combine the queries
+        const combinedQueries = queries?.concat(queries2)
+        const combinedDescriptions = `${description || ''} ${description2 || ''}`;
+        setDashboardMetadata({ dashboardFilters, dashboardId, queries: combinedQueries, description: combinedDescriptions })
       if (!loadingDashboardMetadata) {
         await extensionSDK.localStorageSetItem(`${dashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId, queries, description }))
         setDashboardMetadata({ dashboardFilters, dashboardId, queries, description })
@@ -128,7 +135,7 @@ export const DashboardSummarization: React.FC = () => {
 
   // Generate final summary
   const generateSummary = async (querySummaries: QuerySummary[]) => {
-    await generateFinalSummary(querySummaries, restfulService, extensionSDK, setFormattedData, nextStepsInstructions);
+    await generateFinalSummary(queryResults, querySummaries, restfulService, extensionSDK, setFormattedData, nextStepsInstructions);
   };
 
   // Generate query suggestions
@@ -139,6 +146,13 @@ export const DashboardSummarization: React.FC = () => {
   // The explore is used in the link to explore assistant app, and is assigned based on the first query in the dashboard.
   const explore = dashboardMetadata?.queries[0]?.queryBody?.view
 
+
+  // automatically collapse query summaries when the formatted data is set
+  useEffect(() => {
+    if (formattedData.length > 0) {
+      setShowQuerySummaries(false)
+    }
+  }, [formattedData])
   return (
     <div className="dashboard-summarization">
       {message && (
@@ -206,11 +220,17 @@ export const DashboardSummarization: React.FC = () => {
           </div>
         )}
         {querySummaries.length > 0 && (
-          <div style={{ height: '60%', width: '90%', marginBottom: '1rem', paddingLeft: '1rem' }}>
+          
+          <div style={{ height: '50%', width: '90%', marginBottom: '1rem', paddingLeft: '1rem' }}>
+            <button onClick={() => setShowQuerySummaries(!showQuerySummaries)} className='button' style={{ borderRadius: '5%', padding: '0.5rem' }}>
+              {showQuerySummaries ? "Hide Intermediate Results" : "Show Intermediate Results"} 
+            </button>
+            {showQuerySummaries && (
             <div className="summary-scroll">
               <div className='progress'></div>
               <MarkdownComponent data={querySummaries} />
             </div>
+            )}
           </div>
         )}
         {formattedData.length > 0 && (

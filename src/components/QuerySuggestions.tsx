@@ -27,21 +27,16 @@ const QueryBox = styled.a`
     background-color: #0056b3;
   }
 `
-// Here is the format of the querySuggestions string:
-// ---------
-// '''json
-// [
-//     {"querySuggestion": "Show me the top XXX entries for YYY"},
-//     {"querySuggestion": "What are the higest and lowest values for ZZZ, grouped by AAAA?"},
-//     ...
-// ]
-// '''
+interface QuerySuggestionsProps {
+  explore: any;
+}
+
 interface ParsedQuerySuggestion {
     querySuggestion: string
     }
 interface ParsedQuerySuggestions extends Array<ParsedQuerySuggestion> {}
 
-export const QuerySuggestions: React.FC = (explore) => {
+export const QuerySuggestions: React.FC<QuerySuggestionsProps> = (explore) => {
   const { querySuggestions } = useContext(SummaryDataContext) as any
   const { lookerHostData } = useContext(ExtensionContext) as any
   if (!querySuggestions || querySuggestions.length === 0) return null

@@ -16,7 +16,7 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'restful-service'
+      - 'restfulserviceimage'
       - '--image'
       - 'us-central1-docker.pkg.dev/easymetrics-looker-assistant/dashboard-summarization-docker-repo/restfulserviceimage:latest'
       - '--region'

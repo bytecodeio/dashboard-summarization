@@ -1,4 +1,7 @@
+import { query } from "@looker/sdk";
+
 export const generateFinalSummary = async (
+  queryResults: any[],
   querySummaries: any[],
   restfulService: string,
   extensionSDK: any,
@@ -6,6 +9,8 @@ export const generateFinalSummary = async (
   nextStepsInstructions: string,
 
 ): Promise<void> => {
+  console.log('generateFinalSummary querySummaries and nextStepINstructions', queryResults, querySummaries, nextStepsInstructions);
+  console.log('length of inputs', queryResults.length, querySummaries.length, nextStepsInstructions.length);
   try {
     const response = await extensionSDK.serverProxy(`${restfulService}/generateSummary`, {
       method: 'POST',
@@ -13,6 +18,7 @@ export const generateFinalSummary = async (
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
+        queryResults: queryResults,
         querySummaries,
         nextStepsInstructions: nextStepsInstructions,
         client_secret: extensionSDK.createSecretKeyTag("genai_client_secret")
