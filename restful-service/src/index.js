@@ -67,6 +67,7 @@ async function getFileParts() {
         file_data: {
             file_uri: `gs://${bucketName}/${file.name}`,
             mime_type: 'application/pdf' // Update this if your files have different MIME types
+            // TODO: Make it pull the bucket files.
         }
     }));
 }
@@ -104,7 +105,7 @@ app.post('/generateQuerySummary', verifyClientSecret, async (req, res) => {
 app.post('/generateSummary', verifyClientSecret, async (req, res) => {
     const { queryResults, querySummaries, nextStepsInstructions } = req.body; // Update to receive rawQuerySummaries and nextStepsInstructions
     console.log('Received request for /generateSummary');
-    console.log(writeStructuredLog({message:queryResults, component:'generateSummary queryResults'}));
+    console.log(writeStructuredLog({message:JSON.stringify(queryResults), component:'generateSummary queryResults'}));
     try {
         const fileParts = await getFileParts();
         const summary = await generateSummary(generativeModel, querySummaries, nextStepsInstructions, queryResults, fileParts);
@@ -219,8 +220,7 @@ async function generateSummary(generativeModel, rawQuerySummaries, nextStepsInst
     You are a specialized answering assistant that can summarize a Looker dashboard and the underlying data and propose operational next steps drawing conclusions from the Query Details listed above. Follow the instructions below:
 
     Please highlight the findings of all of the query data here. All responses MUST be based on the actual information returned by these queries: \n                            
-    data: ${queryResults}
-    Here are 
+    data: ${JSON.stringify(queryResults)}
 
     For example, use the names of the locations in the data series (like Seattle, Indianapolis, Chicago, etc) in recommendations regarding locations. Use the name of a process if discussing processes. Don't use row numbers to refer to any facility, process or location. This information should be sourced from the above data.
     Surface the most important or notable details and combine next steps recommendations into one bulleted list of 2-6 suggestions. \n 

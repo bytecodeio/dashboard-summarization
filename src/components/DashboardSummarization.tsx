@@ -229,8 +229,6 @@ export const DashboardSummarization: React.FC = () => {
         {formattedData.length > 0 && (
           <div><div className="formatted-results">
               <div className="summary-scroll">
-              
-            <h3>Summary</h3>
               <MarkdownComponent data={[formattedData]} />
             </div>
           </div>

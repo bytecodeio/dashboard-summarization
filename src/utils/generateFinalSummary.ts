@@ -22,7 +22,7 @@ export const generateFinalSummary = async (
     });
 
     if (response.ok) {
-      console.log('generateFinalSummary request querySummaries and instructions', querySummaries, nextStepsInstructions);
+      console.log('generateFinalSummary request queryResults', queryResults);
       console.log('generateFinalSummary response', response);
       const data = await response.body;
       setFormattedData(data.summary);
