@@ -334,14 +334,19 @@ div.markdown h3 {
 .summary-scroll {
   display: flex;
   flex-direction: column;
-  height:90%;
+  height:100%;
   width:100%;
   padding: 0.8rem;
   overflow-y: scroll;
-  scroll-timeline: --page-scroll y;
-  scroll-timeline: --page-scroll vertical;
+  scroll-behavior: smooth;
+  
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
 
+.summary-scroll::-webkit-scrollbar {
+  display: none;
+}
 @keyframes grow-progress {
 	0% {
     scale: 1 0;
@@ -413,4 +418,22 @@ div.markdown h3 {
   width: 0;
   animation: separator-width 3.5s ease-out forwards;
   animation-timeline: view();
+}
+
+/* Add styles for the intermediate results and formatted results */
+.intermediate-results, .formatted-results {
+  height: 50vh;
+  overflow-y: auto;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.intermediate-results {
+  font-family: 'Muli', sans-serif;
+  font-size: 14px;
+}
+
+.formatted-results {
+  font-family: 'Roboto', sans-serif;
+  font-size: 18px;
 }

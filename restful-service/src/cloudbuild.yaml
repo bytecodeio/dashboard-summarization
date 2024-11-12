@@ -2,13 +2,13 @@ steps:
   # Docker Build
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t',
-           'us-central1-docker.pkg.dev/easymetrics-looker-assistant/dashboard-summarization-docker-repo/restfulserviceimage',
+           'us-central1-docker.pkg.dev/combined-genai-bi/dashboard-summarization-docker-repo/restfulserviceimage',
            '.']
 
   # Docker Push
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push',
-           'us-central1-docker.pkg.dev/easymetrics-looker-assistant/dashboard-summarization-docker-repo/restfulserviceimage']
+           'us-central1-docker.pkg.dev/combined-genai-bi/dashboard-summarization-docker-repo/restfulserviceimage']
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -18,7 +18,7 @@ steps:
       - 'deploy'
       - 'restful-service'
       - '--image'
-      - 'us-central1-docker.pkg.dev/easymetrics-looker-assistant/dashboard-summarization-docker-repo/restfulserviceimage:latest'
+      - 'us-central1-docker.pkg.dev/combined-genai-bi/dashboard-summarization-docker-repo/restfulserviceimage:latest'
       - '--region'
       - 'us-central1'
       - '--platform'

@@ -2,6 +2,7 @@ import { look, Looker40SDK } from "@looker/sdk";
 
 export const generateQuerySuggestions = async (
   querySummaries: any[],
+  queryResults: any[],
   restfulService: string,
   extensionSDK: any,
   setQuerySuggestions: (suggestions: any) => void,
@@ -15,7 +16,7 @@ export const generateQuerySuggestions = async (
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        queryResults: querySummaries,
+        queryResults,
         querySummaries,
         nextStepsInstructions: nextStepsInstructions,
         client_secret: extensionSDK.createSecretKeyTag("genai_client_secret")

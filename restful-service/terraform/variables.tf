@@ -1,6 +1,6 @@
 variable "project_id" {
   type = string
-  default = "easymetrics-looker-assistant"
+  default = "combined-genai-bi"
 }
 
 variable "deployment_region" {
@@ -10,7 +10,7 @@ variable "deployment_region" {
 
 variable "docker_image" {
     type = string
-    default = "us-central1-docker.pkg.dev/easymetrics-looker-assistant/dashboard-summarization-docker-repo/restfulserviceimage"
+    default = "us-central1-docker.pkg.dev/combined-genai-bi/dashboard-summarization-docker-repo/restfulserviceimage"
 }
 
 variable "cloud_run_service_name" {

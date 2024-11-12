@@ -31,6 +31,7 @@ Upcoming capabilities on the roadmap:
 - [React](https://reactjs.org/)
 - [TypeScript](https://www.typescriptlang.org/)
 - [Webpack](https://webpack.js.org/)
+- [Websockets](https://socket.io)
 
 #### Looker
 - [Looker Extension SDK](https://github.com/looker-open-source/sdk-codegen/tree/main/packages/extension-sdk-react)
@@ -89,7 +90,7 @@ This section describes how to set up the web server on Cloud Run powering the Ge
 4. Start the development server
 
    ```bash
-   npm run start
+   yarn start
    ```
 	Your development server should be running at http://localhost:5000
 
@@ -179,22 +180,16 @@ SPACE_ID=
 RESTFUL_SERVICE=<Required: Cloud run endpoint url>
 ```
 
-4. Install the dependencies with [NPM](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
+4. Install the dependencies with [NPM](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) and [yarn](https://classic.yarnpkg.com/lang/en/docs/install/#windows-stable).
 
    ```bash
-   npm install
-   ```
-
-   > You may need to update your Node version or use a [Node version manager](https://github.com/nvm-sh/nvm) to change your Node version.
-   > If you get errors installing dependencies, you may try
-   ```bash
-   npm install --legacy-peer-deps
+   yarn install
    ```
 
 5. Start the development server
 
    ```bash
-   npm run develop
+   yarn develop
    ```
 
    Great! Your extension is now running and serving the JavaScript at http://localhost:8080/bundle.js.
@@ -266,7 +261,7 @@ RESTFUL_SERVICE=<Required: Cloud run endpoint url>
 
 The process above requires your local development server to be running to load the extension code. To allow other people to use the extension, a production build of the extension needs to be run. As the kitchensink uses code splitting to reduce the size of the initially loaded bundle, multiple JavaScript files are generated.
 
-1. In your extension project directory on your development machine, build the extension by running the command `npm run build`.
+1. In your extension project directory on your development machine, build the extension by running the command `yarn build`.
 2. Drag and drop the generated JavaScript file(bundle.js) contained in the `dist` directory into the Looker project interface.
 3. Modify your `manifest.lkml` to use `file` instead of `url` and point it at the `bundle.js` file.
 

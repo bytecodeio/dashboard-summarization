@@ -50,7 +50,7 @@ export const QuerySuggestions: React.FC = (explore) => {
   // Parse the cleaned string as JSON
   const parsedQuerySuggestions: ParsedQuerySuggestions = JSON.parse(cleanedQuerySuggestions)
   const modelName = lookerHostData.extensionId.split('::')[0]
-  const explore_assistant_url = `${lookerHostData.hostOrigin}/extensions/${modelName}::explore_assistant/index?explore=${explore}&queryPrompt=`
+  const explore_assistant_url = `${lookerHostData.hostOrigin}/extensions/${modelName}::demo_combined_genai_ea/index?explore=${explore}&queryPrompt=`
   return (
     <BoxContainer>
       {parsedQuerySuggestions.map((suggestion: ParsedQuerySuggestion, index: number) => (

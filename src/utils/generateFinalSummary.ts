@@ -1,4 +1,5 @@
 export const generateFinalSummary = async (
+  queryResults: any[],
   querySummaries: any[],
   restfulService: string,
   extensionSDK: any,
@@ -13,6 +14,7 @@ export const generateFinalSummary = async (
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
+        queryResults,
         querySummaries,
         nextStepsInstructions: nextStepsInstructions,
         client_secret: extensionSDK.createSecretKeyTag("genai_client_secret")
