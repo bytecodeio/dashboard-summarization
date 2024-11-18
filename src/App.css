@@ -86,3 +86,13 @@
 .summary-scroll::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* Override global div styles for .summary-scroll */
+.summary-scroll {
+  -ms-overflow-style: auto;  /* IE and Edge */
+  scrollbar-width: auto;  /* Firefox */
+}
+
+.summary-scroll::-webkit-scrollbar {
+  display: block;
+}

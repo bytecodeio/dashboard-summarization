@@ -36,6 +36,8 @@ async function writeToTable(promptText, attachmentSize, output, processName, exa
 }
 
 async function writeToTableWithRating(hash, rating) {
+    // convert rating to integer
+    rating = parseInt(rating);
     const query = `
         UPDATE \`${datasetId}.${tableId}\`
         SET rating = @rating

@@ -116,11 +116,12 @@ export const DashboardSummarization: React.FC = () => {
         }
 
         // Fetch query results for all queries
-        const queryResults = await Promise.all(allQueries.map(query => fetchQueryData([query], core40SDK)));
+        const queryResults = await Promise.all(allQueries.flatMap(query => fetchQueryData(query, core40SDK)));
 
         // Set the metadata and query results
         await extensionSDK.localStorageSetItem(`${dashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId, queries: allQueries, description }));
         console.log('Setting dashboardMetadata for dashboardid and queries:', { dashboardId, description, queries: allQueries });
+        console.log('Setting queryResults for dashboardid:', queryResults);
         setDashboardMetadata({ dashboardFilters, dashboardId, queries: allQueries, description });
         setQueryResults(queryResults);
       } catch (error) {
@@ -137,20 +138,6 @@ export const DashboardSummarization: React.FC = () => {
       }, 1000)
     }
   }, [message])
-
-  // // Run each query in the dashboard to get query data
-  // useEffect(() => {
-  //   if (dashboardMetadata.queries.length <= 0) return;
-  //   console.log('fetching query results for metadata:', dashboardMetadata);
-  //   const fetchQueryResults = async () => {
-  //     if (dashboardMetadata.queries.length > 0) {
-  //       const results = await fetchQueryData(dashboardMetadata.queries, core40SDK);
-        // setQueryResults(results);
-  //     }
-  //   };
-
-  //   fetchQueryResults();
-  // }, [dashboardMetadata.queries, core40SDK]);
 
   // Fetch dashboard metadata, including description and queries
   useEffect(() => {
