@@ -158,7 +158,7 @@ button:-webkit-details-marker {
 }
 
 h2, h3 {
-  font-size: 1.2em;
+  font-size: 1.0em;
 }
 
 .app {
@@ -308,7 +308,7 @@ div.markdown h3 {
 }
 
 .customList {
-  font-size: 1em;
+  font-size: 0.8em;
 }
 
 .bard {
@@ -329,32 +329,6 @@ div.markdown h3 {
 	0% {
 		opacity: 1;
 	}
-}
-
-.summary-scroll {
-  display: flex;
-  flex-direction: column;
-  height:100%;
-  width:100%;
-  padding: 0.8rem;
-  overflow-y: scroll;
-  scroll-behavior: smooth;
-  
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
-}
-
-.summary-scroll::-webkit-scrollbar {
-  display: none;
-}
-@keyframes grow-progress {
-	0% {
-    scale: 1 0;
-  }
-
-  100% {
-    scale: 1 1;
-  }
 }
 
 .progress {

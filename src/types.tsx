@@ -69,4 +69,6 @@ export interface SummaryDataContextType {
     setMessage: React.Dispatch<React.SetStateAction<string>>;
     dashboardURL: string;
     setDashboardURL: React.Dispatch<React.SetStateAction<string>>;
+    lastHash: string;
+    setLastHash: React.Dispatch<React.SetStateAction<string>>;
   }

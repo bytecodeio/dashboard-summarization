@@ -23,7 +23,7 @@ export const fetchDashboardDetails = async (
   const { description } = await core40SDK.ok(core40SDK.dashboard(dashboardId, 'description'));
 
   const queries = await core40SDK.ok(core40SDK.dashboard_dashboard_elements(
-    dashboardId, 'query,result_maker,note_text,title,query_id'))
+    dashboardId, 'query,result_maker,note_text,description,title,query_id'))
     .then((res) => {
       return res.filter((d) => d.query !== null || d.result_maker !== null)
         .map((data) => {

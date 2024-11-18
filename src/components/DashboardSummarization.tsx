@@ -24,7 +24,7 @@ SOFTWARE.
 
 */
 
-import React, { useCallback, useContext, useEffect, useState } from 'react'
+import React, { useCallback, useContext, useEffect, useState, useRef } from 'react'
 import { ExtensionContext, ExtensionContextData } from '@looker/extension-sdk-react'
 import { Filters } from '@looker/extension-sdk'
 import { GenerativeLogo, LandingPage } from './LandingPage'
@@ -39,6 +39,8 @@ import { collateSummaries } from '../utils/collateSummaries'
 import { generateFinalSummary } from '../utils/generateFinalSummary'
 import { generateQuerySuggestions } from '../utils/generateQuerySuggestions'
 import { QuerySuggestions } from './QuerySuggestions'
+import { Rating } from './Rating'
+
 
 export const DashboardSummarization: React.FC = () => {
   const { extensionSDK, tileHostData, core40SDK, lookerHostData } = useContext(ExtensionContext) as ExtensionContextData
@@ -50,10 +52,11 @@ export const DashboardSummarization: React.FC = () => {
   const [nextStepsInstructions, setNextStepsInstructions] = useState<string>('');
   const [dashboardId, setDashboardId] = useState<string>('');
   const [showIntermediateResults, setShowIntermediateResults] = useState(true);
-  const { data, setData, formattedData, setFormattedData, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
+  const { data, setData, formattedData, setFormattedData, lastHash, setLastHash, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
   const [loading, setLoading] = useState(false)
   const workspaceOauth = useWorkspaceOauth()
   const slackOauth = useSlackOauth()
+  const summaryScrollRef = useRef<HTMLDivElement>(null);
 
   const hostContext = lookerHostData?.route || ''
   const urlPath = hostContext.split('?')[0].split('/') || []
@@ -63,6 +66,7 @@ export const DashboardSummarization: React.FC = () => {
   const urlDashboardFilters: Filters = Object.fromEntries(urlParams.entries())
   const newDashboardId = urlDashboardId === 'extension.loader' ? tileDashboardId : urlDashboardId
   const dashboardFilters = Object.keys(tileDashboardFilters || {}).length === 0 ? urlDashboardFilters : tileDashboardFilters || {}
+
 
   useEffect(() => {
     if (tileDashboardId !== '' && tileDashboardId !== dashboardId) {
@@ -83,14 +87,45 @@ export const DashboardSummarization: React.FC = () => {
 
   // Fetch and set the metadata for the dashboard
   const fetchQueryMetadata = useCallback(async () => {
-    if (dashboardId) {
+    if (dashboardId && loadingDashboardMetadata === false) {
       console.log('fetching query metadata for dashboard:', dashboardId);
-      setLoadingDashboardMetadata(true)
-      const { description, queries } = await fetchDashboardDetails(dashboardId, core40SDK, extensionSDK, dashboardFilters)
-      if (!loadingDashboardMetadata) {
-        await extensionSDK.localStorageSetItem(`${dashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId, queries, description }))
-        setDashboardMetadata({ dashboardFilters, dashboardId, queries, description })
-      }
+      setLoadingDashboardMetadata(true);
+      try {
+        const { description, queries } = await fetchDashboardDetails(dashboardId, core40SDK, extensionSDK, dashboardFilters);
+        console.log('fetched query metadata for dashboardid:', { dashboardId, description, queries });
+
+        let allQueries = [...queries];
+
+        // If the description includes a 'Reference Dashboards' link, we need to fetch those dashboards also.
+        if (description && description.includes('Reference Dashboards')) {
+          const refDashboards = description.split('Reference Dashboards: ')[1];
+          const refDashboardIds = refDashboards.split(',');
+
+          // Fetch all reference dashboards
+          const refDashboardPromises = refDashboardIds.map(refDashboardId => {
+            console.log('fetching reference dashboard:', refDashboardId);
+            return fetchDashboardDetails(refDashboardId.trim(), core40SDK, extensionSDK, dashboardFilters);
+          });
+
+          const refDashboardsData = await Promise.all(refDashboardPromises);
+
+          // Add queries from reference dashboards to the main queries list
+          refDashboardsData.forEach(refDashboard => {
+            allQueries.push(...refDashboard.queries);
+          });
+        }
+
+        // Fetch query results for all queries
+        const queryResults = await Promise.all(allQueries.map(query => fetchQueryData([query], core40SDK)));
+
+        // Set the metadata and query results
+        await extensionSDK.localStorageSetItem(`${dashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId, queries: allQueries, description }));
+        console.log('Setting dashboardMetadata for dashboardid and queries:', { dashboardId, description, queries: allQueries });
+        setDashboardMetadata({ dashboardFilters, dashboardId, queries: allQueries, description });
+        setQueryResults(queryResults);
+      } catch (error) {
+        console.error('Error fetching query metadata:', error);
+      } 
     }
   }, [dashboardId, dashboardFilters, core40SDK, extensionSDK, setLoadingDashboardMetadata, setMessage, setDashboardMetadata]);
 
@@ -103,32 +138,32 @@ export const DashboardSummarization: React.FC = () => {
     }
   }, [message])
 
-  // Run each query in the dashboard to get query data
-  useEffect(() => {
-    if (dashboardMetadata.queries.length <= 0) return;
-    console.log('fetching query results for metadata:', dashboardMetadata);
-    const fetchQueryResults = async () => {
-      if (dashboardMetadata.queries.length > 0) {
-        const results = await fetchQueryData(dashboardMetadata.queries, core40SDK);
-        setQueryResults(results);
-      }
-    };
+  // // Run each query in the dashboard to get query data
+  // useEffect(() => {
+  //   if (dashboardMetadata.queries.length <= 0) return;
+  //   console.log('fetching query results for metadata:', dashboardMetadata);
+  //   const fetchQueryResults = async () => {
+  //     if (dashboardMetadata.queries.length > 0) {
+  //       const results = await fetchQueryData(dashboardMetadata.queries, core40SDK);
+        // setQueryResults(results);
+  //     }
+  //   };
 
-    fetchQueryResults();
-  }, [dashboardMetadata.queries, core40SDK]);
+  //   fetchQueryResults();
+  // }, [dashboardMetadata.queries, core40SDK]);
 
   // Fetch dashboard metadata, including description and queries
   useEffect(() => {
     if (dashboardMetadata.dashboardId === '') {
       setDashboardURL(extensionSDK.lookerHostData?.hostUrl + "/embed/dashboards/" + dashboardId)
-      fetchQueryMetadata()
+      if (!loadingDashboardMetadata) fetchQueryMetadata()
     }
   }, [fetchQueryMetadata, dashboardMetadata, dashboardId, dashboardFilters, extensionSDK, setDashboardURL, setLoadingDashboardMetadata, setMessage, setDashboardMetadata]);
 
   // Generate final summary
   const generateSummary = async (querySummaries: QuerySummary[], queryResults: any[]) => {
-    console.log('generateSummary querySummaries based on results:',queryResults);
-    await generateFinalSummary(queryResults, querySummaries, restfulService, extensionSDK, setFormattedData, nextStepsInstructions);
+    console.log('generateSummary querySummaries based on results:', queryResults);
+    await generateFinalSummary(queryResults, querySummaries, restfulService, extensionSDK, setFormattedData, setLastHash, nextStepsInstructions);
   };
 
   // Generate query suggestions
@@ -136,7 +171,7 @@ export const DashboardSummarization: React.FC = () => {
     await generateQuerySuggestions(querySummaries, queryResults, restfulService, extensionSDK, setQuerySuggestions, nextStepsInstructions);
   };
 
-// When the final resutls come in at first, hide the intermediat results
+  // When the final resutls come in at first, hide the intermediat results
   useEffect(() => {
     if (formattedData.length > 0) {
       setShowIntermediateResults(false)
@@ -162,90 +197,94 @@ export const DashboardSummarization: React.FC = () => {
             </div>
             <div style={{ width: '100%', marginTop: '1rem' }}>
               <form onSubmit={(e) => { e.preventDefault(); setLoading(true); }}>
-                <label>
-                  <div style={{ fontSize: '1.2rem', opacity: '1', width: 'auto' }}>Next Steps Instructions:</div>
-                  <div style={{ fontSize: '0.9rem', opacity: '0.8', width: 'auto' }}>Please provide business context for what recommendations you hope to have, and what you seek to acheive from the dashboard summary.</div>
-                  <textarea
-                    value={nextStepsInstructions}
-                    onChange={(e) => setNextStepsInstructions(e.target.value)}
-                    rows={6}
-                    cols={50}
-                  />
-                </label>
-                <div><button
-                  className="button"
-                  style={{ lineHeight: "20px", padding: "6px 16px" }}
-                  disabled={loading}
-                  onClick={async () => {
-                    setLoading(true);
-                    try {
-                      const newQuerySummaries = await collateSummaries(queryResults, restfulService, extensionSDK, dashboardMetadata, setQuerySummaries);
-                      console.log('querySummaries:', newQuerySummaries);
-                      generateSummary(newQuerySummaries, queryResults);
-                      generateSuggestions(newQuerySummaries, queryResults);
-                    } catch (error) {
-                      console.error('Error generating summaries and suggestions:', error);
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                >
-                  {loading ? "Generating" : "Generate"}{" "}
-                  <img
-                    style={{
-                      lineHeight: "20px",
-                      padding: "10px 20px",
-                      marginTop: "1rem",
-                      backgroundColor: "#007bff",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "5px",
-                      cursor: "pointer",
-                      fontSize: "1rem",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                <div
+                  // Move the button on the right to align with the bottom of the text entry box
+                  style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'end', width: '100%' }}>
+                  <label>
+                    <div style={{ fontSize: '1.2rem', opacity: '1', width: 'auto' }}>Custom Instructions or Additional Context:</div>
+                    <textarea
+                      value={nextStepsInstructions}
+                      onChange={(e) => setNextStepsInstructions(e.target.value)}
+                      rows={6}
+                      cols={50}
+                    />
+                  </label>
+                  <div><button
+                    className="button"
+                    style={{ lineHeight: "20px", padding: "6px 16px", marginRight: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+                    disabled={loading}
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        const newQuerySummaries = await collateSummaries(queryResults, restfulService, extensionSDK, dashboardMetadata, setQuerySummaries);
+                        console.log('querySummaries:', newQuerySummaries);
+                        generateSummary(newQuerySummaries, queryResults);
+                        generateSuggestions(newQuerySummaries, queryResults);
+                      } catch (error) {
+                        console.error('Error generating summaries and suggestions:', error);
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
-                    src="https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/summarize_auto/default/20px.svg"
-                  />
-                </button>
+                  >
+                    {loading ? "Generating" : "Generate Summary"}{" "}
+                    <img
+                      style={{
+                        lineHeight: "20px",
+                        padding: "10px 20px",
+                        marginTop: "1rem",
+                        backgroundColor: "#007bff",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "5px",
+                        cursor: "pointer",
+                        fontSize: "1rem",
+                        boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                      }}
+                      src="https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/summarize_auto/default/20px.svg"
+                    />
+                  </button>
+                  </div>
                 </div>
               </form>
             </div>
           </div>
         )}
-         {showIntermediateResults && (
-          
+        {showIntermediateResults && querySummaries.length > 0 && (
+
           <div className="intermediate-results">
             <h3>Intermediate Results</h3>
-            <div className="summary-scroll">
+            <div className="summary-scroll" ref={summaryScrollRef}>
               <MarkdownComponent data={querySummaries} />
             </div>
             <button onClick={() => setShowIntermediateResults(!showIntermediateResults)} className='button' style={{ borderRadius: '5%', padding: '0.5rem' }}>
               {showIntermediateResults ? "Hide Intermediate Results" : "Show Intermediate Results"}
             </button>
-        
+
           </div>
         )}
 
         {formattedData.length > 0 && (
           <div><div className="formatted-results">
-              <div className="summary-scroll">
+            <div className="summary-scroll">
               <MarkdownComponent data={[formattedData]} />
             </div>
           </div>
-        <QuerySuggestions explore={explore} />
-        <button
-          className="button"
-          style={{ marginTop: '1rem', padding: '0.5rem 1rem' }}
-          onClick={() => {
-            setQuerySummaries([]);
-            setFormattedData([]);
-            setNextStepsInstructions('');
-          }}
-        >
-          Start Another Summary
-        </button>
-        </div>
-      )}
+            <Rating slug={lastHash} restfulService={restfulService} extensionSDK={extensionSDK} />
+            <QuerySuggestions explore={explore} />
+            <button
+              className="button"
+              style={{ marginTop: '1rem', padding: '0.5rem 1rem' }}
+              onClick={() => {
+                setQuerySummaries([]);
+                setFormattedData('');
+                setNextStepsInstructions('');
+              }}
+            >
+              Start Another Summary
+            </button>
+          </div>
+        )}
       </div>
       <div className="actions">
         <div className='layoutBottom'>

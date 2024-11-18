@@ -4,6 +4,7 @@ export const generateFinalSummary = async (
   restfulService: string,
   extensionSDK: any,
   setFormattedData: (data: any) => void,
+  setLastHash: (hash: string) => void,
   nextStepsInstructions: string,
 
 ): Promise<void> => {
@@ -26,6 +27,7 @@ export const generateFinalSummary = async (
       console.log('generateFinalSummary response', response);
       const data = await response.body;
       setFormattedData(data.summary);
+      setLastHash(data.hash);
     } else {
       console.error('Error generating summary:', response.statusText);
     }

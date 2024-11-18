@@ -60,6 +60,19 @@ resource "google_cloud_run_v2_service" "default" {
           value = var.deployment_region
         }
 
+        env_secret_vars = [
+          {
+            name = "GENAI_CLIENT_SECRET"
+  
+            value_from = [{
+              secret_key_ref = {
+                name = "GENAI_CLIENT_SECRET_DS"
+                key = "latest"
+              }
+          }]
+        }
+        ]
+
         resources {
             limits = {
                 cpu = 1
@@ -91,4 +104,70 @@ resource "google_cloud_run_v2_service_iam_policy" "noauth" {
 # Return service URL
 output "url" {
   value = "${google_cloud_run_v2_service.default.uri}"
+}
+
+resource "google_bigquery_dataset" "llm_logs_dataset" {
+  dataset_id = "llm_logs"
+  project    = var.project_id
+  location   = var.deployment_region
+}
+
+resource "google_bigquery_table" "llm_logs_table" {
+  dataset_id = google_bigquery_dataset.llm_logs_dataset.dataset_id
+  table_id   = "llm_calls"
+  project    = var.project_id
+  schema = <<EOF
+[
+  {
+    "name": "hash",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "processName",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "input",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "attachment_size",
+    "type": "INTEGER",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "output",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "input_bytes",
+    "type": "INTEGER",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "output_bytes",
+    "type": "INTEGER",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "rating",
+    "type": "INTEGER",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "examples_used",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  }
+]
+EOF
 }

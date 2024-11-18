@@ -41,7 +41,11 @@ interface ParsedQuerySuggestion {
     }
 interface ParsedQuerySuggestions extends Array<ParsedQuerySuggestion> {}
 
-export const QuerySuggestions: React.FC = (explore) => {
+interface QuerySuggestionsProps {
+  explore: string;
+}
+
+export const QuerySuggestions: React.FC<QuerySuggestionsProps> = (explore) => {
   const { querySuggestions } = useContext(SummaryDataContext) as any
   const { lookerHostData } = useContext(ExtensionContext) as any
   if (!querySuggestions || querySuggestions.length === 0) return null

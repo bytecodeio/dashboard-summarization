@@ -38,6 +38,7 @@ export const App = hot(() => {
   const [data, setData] = React.useState<string[]>([])
   const [formattedData, setFormattedData] = React.useState<string>('')
   const [querySuggestions, setQuerySuggestions] = React.useState<string[]>([])
+  const [lastHash, setLastHash] = React.useState<string>('')
   const [info, setInfo] = React.useState(true)
   const [message, setMessage] = React.useState('')
   const [dashboardURL, setDashboardURL] = React.useState<string>('')
@@ -55,6 +56,8 @@ export const App = hot(() => {
     setMessage,
     dashboardURL,
     setDashboardURL,
+    lastHash,
+    setLastHash
   };
 
   return (
