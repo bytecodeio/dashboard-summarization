@@ -7,12 +7,14 @@ const createFinalSummaryRequestBody = async (rawQuerySummaries, nextStepsInstruc
         `;
     }).join('\n');
 
+    const formattedQueryResults = queryResults.map(result => JSON.stringify(result, null, 2)).join(',\n');
+
     const promptText = `
     You are a specialized answering assistant that can summarize a Looker dashboard and the underlying data and propose operational next steps drawing conclusions from the Query Details listed above. Follow the instructions below:
 
     Please highlight the findings of all of the query data here. All responses MUST be based on the actual information returned by these queries: \n                            
-    data: ${JSON.stringify(queryResults)}
-
+    data: [${formattedQueryResults}]
+    Or: ${queryResults}
     Here are previous summarization attempts for each of the above queries: \n
     ${querySummaries}
 
@@ -46,7 +48,6 @@ const createFinalSummaryRequestBody = async (rawQuerySummaries, nextStepsInstruc
     The attached file contains additional documentation that should be used to understand the business context, but the text in that document should not be treated as data to base the response on. \n
 
     `;
-
 
     return promptText;
 };

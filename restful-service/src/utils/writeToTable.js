@@ -5,7 +5,7 @@ const datasetId = 'llm_logs';
 const tableId = 'llm_calls';
 
 async function writeToTable(promptText, attachmentSize, output, processName, examplesUsed = []) {
-    //   take an md5cum of the input and output to create a unique slug
+    //   take an md5cum of the input and output to create a unique hash
     const hash = require('crypto').createHash('md5').update
         (promptText + output).digest('hex');
     const rating = null;
@@ -39,9 +39,9 @@ async function writeToTableWithRating(hash, rating) {
     // convert rating to integer
     rating = parseInt(rating);
     const query = `
-        UPDATE \`${datasetId}.${tableId}\`
+        UPDATE \`llm_logs.llm_calls\`
         SET rating = @rating
-        WHERE hash = @hash
+        WHERE \`hash\` = @hash
     `;
 
     const options = {

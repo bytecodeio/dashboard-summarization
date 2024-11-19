@@ -42,24 +42,28 @@
   margin-top: 10px;
 }
 
-.smiley-container {
+.thumb-container {
   display: flex;
   justify-content: center;
-  gap: 10px;
+  gap: 20px;
 }
 
-.smiley-button {
+.thumb-button {
   background: none;
   border: none;
   font-size: 2rem;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: transform 0.2s, color 0.2s;
+  color: #ccc; /* Default thumb color */
 }
 
-.smiley-button:hover {
+.thumb-button:hover {
   transform: scale(1.2);
 }
 
+.thumb-button.selected {
+  color: #ffcc00; /* Highlighted thumb color */
+}
 
 .summary-scroll {
   display: flex;

@@ -165,6 +165,12 @@ export const DashboardSummarization: React.FC = () => {
     }
   }, [formattedData])
 
+  useEffect(() => {
+    if (summaryScrollRef.current) {
+      summaryScrollRef.current.scrollTop = summaryScrollRef.current.scrollHeight;
+    }
+  }, [querySummaries, formattedData]);
+
   // The explore is used in the link to explore assistant app, and is assigned based on the first query in the dashboard.
   const explore = dashboardMetadata?.queries[0]?.queryBody?.view
 
@@ -257,7 +263,7 @@ export const DashboardSummarization: React.FC = () => {
               <MarkdownComponent data={[formattedData]} />
             </div>
           </div>
-            <Rating slug={lastHash} restfulService={restfulService} extensionSDK={extensionSDK} />
+            <Rating hash={lastHash} restfulService={restfulService} extensionSDK={extensionSDK} />
             <QuerySuggestions explore={explore} />
             <button
               className="button"
