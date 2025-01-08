@@ -148,14 +148,11 @@ export const DashboardSummarization: React.FC = () => {
         </div>
       )}
       <div>
-        <div style={{ height: '70%', width: '90%', marginBottom: '1rem', paddingLeft: '1rem' }}>
-          <div className="summary-scroll">
-            <div className='progress'></div>
+        <div style={{ marginBottom: '1rem', paddingLeft: '1rem' }}>
             <MarkdownComponent data={[formattedData]} />
           </div>
-        </div>
       </div>
-      <div className="actions">
+      {/* <div className="actions">
         <div className='layoutBottom'>
           <span style={{ fontSize: '0.9rem', opacity: !loading ? 0.8 : 0.2, width: '30%' }}>Actions</span>
           <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'flex-end', width: '70%', opacity: !loading ? 1 : 0.2 }}>
@@ -170,7 +167,7 @@ export const DashboardSummarization: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }
