@@ -36,9 +36,7 @@ import { fetchDashboardDetails } from '../utils/fetchDashboardDetails'
 import { DashboardMetadata, Query, QuerySummary, SummaryDataContextType } from '../types'
 import { fetchQueryData } from '../utils/fetchQueryData'
 import { collateSummaries } from '../utils/collateSummaries'
-import { generateFinalSummary } from '../utils/generateFinalSummary'
-import { generateQuerySuggestions } from '../utils/generateQuerySuggestions'
-import { QuerySuggestions } from './QuerySuggestions'
+import { generate24FactorSummary } from '../utils/generate24FactorSummary'
 import { DashboardEmbed } from './DashboardEmbed'
 
 export const DashboardSummarization: React.FC = () => {
@@ -48,30 +46,23 @@ export const DashboardSummarization: React.FC = () => {
   const [loadingDashboardMetadata, setLoadingDashboardMetadata] = useState<boolean>(false)
   const [querySummaries, setQuerySummaries] = useState<any[]>([])
   const [queryResults, setQueryResults] = useState<any[]>([])
-  const [nextStepsInstructions, setNextStepsInstructions] = useState<string>('');
-  const [dashboardId, setDashboardId] = useState<string>('');
   const { data, setData, formattedData, setFormattedData, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
   const [loading, setLoading] = useState(false)
   const workspaceOauth = useWorkspaceOauth()
   const slackOauth = useSlackOauth()
 
   const hostContext = lookerHostData?.route || ''
-  const urlPath = hostContext.split('?')[0].split('/') || []
-  const urlDashboardId = urlPath[urlPath.length - 1]
-  console.log('urlDashboardId:', urlDashboardId)
   const filterPart = hostContext.split('?')[1] || ''
   const urlParams = new URLSearchParams(filterPart)
   const urlDashboardFilters: Filters = Object.fromEntries(urlParams.entries())
-  const newDashboardId = urlDashboardId === 'extension.loader' ? tileDashboardId : urlDashboardId
   const dashboardFilters = Object.keys(tileDashboardFilters || {}).length === 0 ? urlDashboardFilters : tileDashboardFilters || {}
 
   useEffect(() => {
-    if (tileDashboardId !== '' && tileDashboardId !== dashboardId) {
-      const newDashboardId = urlDashboardId === 'extension.loader' ? tileDashboardId : urlDashboardId
-      setDashboardId(String(newDashboardId))
-
+    console.log('tileDashboardId:', tileDashboardId);
+    if (tileDashboardId) {
+      setDashboardURL(extensionSDK.lookerHostData?.hostUrl + "/embed/dashboards/" + tileDashboardId)
     }
-  }, [tileDashboardId, dashboardId, setDashboardId])
+  }, [tileDashboardId, extensionSDK, setDashboardURL])
 
   // const restfulService = process.env.RESTFUL_WEBSERVICE || ''
   const restfulService = 'https://restfulserviceimage-1098454044038.us-central1.run.app'
@@ -84,16 +75,16 @@ export const DashboardSummarization: React.FC = () => {
 
   // Fetch and set the metadata for the dashboard
   const fetchQueryMetadata = useCallback(async () => {
-    console.log('fetching query metadata for dashboard:', dashboardId);
-    if (dashboardId) {
+    console.log('fetching query metadata for dashboard:', tileDashboardId);
+    if (tileDashboardId) {
       setLoadingDashboardMetadata(true)
-      const { description, queries } = await fetchDashboardDetails(dashboardId, core40SDK, extensionSDK, dashboardFilters)
+      const { description, queries } = await fetchDashboardDetails(tileDashboardId, core40SDK, extensionSDK, dashboardFilters)
       if (!loadingDashboardMetadata) {
-        await extensionSDK.localStorageSetItem(`${dashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId, queries, description }))
-        setDashboardMetadata({ dashboardFilters, dashboardId, queries, description })
+        await extensionSDK.localStorageSetItem(`${tileDashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId: tileDashboardId, queries, description }))
+        setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description })
       }
     }
-  }, [dashboardId, dashboardFilters, core40SDK, extensionSDK, setLoadingDashboardMetadata, setMessage, setDashboardMetadata]);
+  }, [tileDashboardId, dashboardFilters, core40SDK, extensionSDK, setLoadingDashboardMetadata, setMessage, setDashboardMetadata]);
 
   // Update the message when the dashboard metadata is loaded
   useEffect(() => {
@@ -121,23 +112,33 @@ export const DashboardSummarization: React.FC = () => {
   // Fetch dashboard metadata, including description and queries
   useEffect(() => {
     if (dashboardMetadata.dashboardId === '') {
-      setDashboardURL(extensionSDK.lookerHostData?.hostUrl + "/embed/dashboards/" + dashboardId)
       fetchQueryMetadata()
     }
-  }, [fetchQueryMetadata, dashboardMetadata, dashboardId, dashboardFilters, extensionSDK, setDashboardURL, setLoadingDashboardMetadata, setMessage, setDashboardMetadata]);
-
-  // Generate final summary
-  const generateSummary = async (querySummaries: QuerySummary[]) => {
-    await generateFinalSummary(querySummaries, restfulService, extensionSDK, setFormattedData, nextStepsInstructions);
-  };
-
-  // Generate query suggestions
-  const generateSuggestions = async (querySummaries: QuerySummary[]) => {
-    await generateQuerySuggestions(querySummaries, restfulService, extensionSDK, setQuerySuggestions, nextStepsInstructions);
-  };
+  }, [fetchQueryMetadata, dashboardMetadata, tileDashboardId, dashboardFilters, extensionSDK, setLoadingDashboardMetadata, setMessage, setDashboardMetadata]);
 
   // The explore is used in the link to explore assistant app, and is assigned based on the first query in the dashboard.
   const explore = dashboardMetadata?.queries[0]?.queryBody?.view
+
+  const prompt = "You are an analytics agent. Please summarize the 24 factors that went into this Market Score."
+  const sharedContext = ""
+
+  // Automatically fetch query summaries and generate the 24 factors summary
+  useEffect(() => {
+    const generateSummary = async () => {
+      setLoading(true);
+      try {
+        await generate24FactorSummary(queryResults, extensionSDK, setFormattedData, prompt, sharedContext);
+      } catch (error) {
+        console.error('Error generating summaries and suggestions:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (queryResults.length > 0) {
+      generateSummary();
+    }
+  }, [queryResults, restfulService, extensionSDK, dashboardMetadata, setQuerySummaries, setFormattedData, prompt, sharedContext]);
 
   return (
     <div className="dashboard-summarization">
@@ -146,82 +147,13 @@ export const DashboardSummarization: React.FC = () => {
           {message}
         </div>
       )}
-      <div >
-        {!loading && formattedData.length <= 0 && (
-          <div>
-            <div style={{ width: '100%' }}>
-              <div style={{ fontSize: '1.2rem', opacity: '1', width: 'auto' }}>Dashboard Summarization</div>
-              <div style={{ fontSize: '0.9rem', opacity: '0.8', width: '60%' }}>Looker + Vertex AI</div>
-            </div>
-            <div style={{ width: '100%', marginTop: '1rem' }}>
-              <form onSubmit={(e) => { e.preventDefault(); setLoading(true); }}>
-                <label>
-                  <div style={{ fontSize: '1.2rem', opacity: '1', width: 'auto' }}>Next Steps Instructions:</div>
-                  <div style={{ fontSize: '0.9rem', opacity: '0.8', width: '60%' }}>Please provide business context for what recommendations you hope to have, and what you seek to acheive from the dashboard summary.</div>
-                  <textarea
-                    value={nextStepsInstructions}
-                    onChange={(e) => setNextStepsInstructions(e.target.value)}
-                    rows={10}
-                    cols={90}
-                  />
-                </label>
-                <div><button
-                  className="button"
-                  style={{ lineHeight: "20px", padding: "6px 16px" }}
-                  disabled={loading}
-                  onClick={async () => {
-                    setLoading(true);
-                    try {
-                      const newQuerySummaries = await collateSummaries(queryResults, restfulService, extensionSDK, dashboardMetadata, setQuerySummaries);
-                      console.log('querySummaries:', newQuerySummaries);
-                      generateSummary(newQuerySummaries);
-                      generateSuggestions(newQuerySummaries);
-                    } catch (error) {
-                      console.error('Error generating summaries and suggestions:', error);
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                >
-                  {loading ? "Generating" : "Generate"}{" "}
-                  <img
-                    style={{
-                      lineHeight: "20px",
-                      padding: "10px 20px",
-                      marginTop: "1rem",
-                      backgroundColor: "#007bff",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "5px",
-                      cursor: "pointer",
-                      fontSize: "1rem",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                    src="https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/summarize_auto/default/20px.svg"
-                  />
-                </button>
-                </div>
-              </form>
-            </div>
+      <div>
+        <div style={{ height: '70%', width: '90%', marginBottom: '1rem', paddingLeft: '1rem' }}>
+          <div className="summary-scroll">
+            <div className='progress'></div>
+            <MarkdownComponent data={[formattedData]} />
           </div>
-        )}
-        {querySummaries.length > 0 && (
-          <div style={{ height: '60%', width: '90%', marginBottom: '1rem', paddingLeft: '1rem' }}>
-            <div className="summary-scroll">
-              <div className='progress'></div>
-              <MarkdownComponent data={querySummaries} />
-            </div>
-          </div>
-        )}
-        {formattedData.length > 0 && (
-          <div style={{ height: '70%', width: '90%', marginBottom: '1rem', paddingLeft: '1rem' }}>
-            <div className="summary-scroll">
-              <div className='progress'></div>
-              <MarkdownComponent data={[formattedData]} />
-            </div>
-          </div>
-        )}
-        <QuerySuggestions explore={explore}/>
+        </div>
       </div>
       <div className="actions">
         <div className='layoutBottom'>

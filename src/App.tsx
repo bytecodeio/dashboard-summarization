@@ -62,7 +62,6 @@ export const App = hot(() => {
       <SummaryDataContext.Provider value={contextValue}>
         <div className="container">
           <DashboardSummarization />
-          <DashboardEmbed />
         </div>
       </SummaryDataContext.Provider>
     </ExtensionProvider>

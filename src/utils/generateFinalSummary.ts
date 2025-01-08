@@ -3,9 +3,15 @@ export const generateFinalSummary = async (
   restfulService: string,
   extensionSDK: any,
   setFormattedData: (data: any) => void,
+  // rename to prompt
   nextStepsInstructions: string,
 
 ): Promise<void> => {
+  const AI_ENDPOINT = 'https://alpha-mlops-agent-api.knocktest.com"';
+  // Change to point locally if you're testing.
+  // const AI_ENDPOINT = 'http://localhost:5000';
+  const prompt = nextStepsInstructions;
+  
   try {
     const response = await extensionSDK.serverProxy(`${restfulService}/generateSummary`, {
       method: 'POST',
