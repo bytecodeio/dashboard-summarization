@@ -18,10 +18,28 @@ export const fetchDashboardDetails = async (
   dashboardId: string,
   core40SDK: any,
   extensionSDK: any,
-  dashboardFilters: Filters
+  dashboardFilters: Filters,
+  tileHostData: any,
 ): Promise<DashboardMetadata> => {
-  const { description } = await core40SDK.ok(core40SDK.dashboard(dashboardId, 'description'));
+  const dashboardResponse = await core40SDK.ok(core40SDK.dashboard(dashboardId));
+  
+  const { description } = dashboardResponse
 
+  const getPrompt = (dashboardResponse: any, ) => {
+    const dashboardElements = dashboardResponse.dashboard_elements;
+    const elementId = tileHostData.elementId;
+    const mountedElement = dashboardElements.find((element: any) => element.id === elementId);
+    // extension_id: "mfa-pilot::dashboard-summarization"
+    const note_text = mountedElement?.note_text;
+    console.log('note_text:', note_text);
+    const doesItStartWithPrompt = note_text?.startsWith('Prompt:');
+    if (doesItStartWithPrompt) {
+      const prompt = note_text.split('Prompt:')[1].trim();
+      return prompt;
+    }
+    return '';
+  }
+  const prompt = getPrompt(dashboardResponse);
   const queries = await core40SDK.ok(core40SDK.dashboard_dashboard_elements(
     dashboardId, 'query,result_maker,note_text,title,query_id'))
     .then((res) => {
@@ -43,5 +61,5 @@ export const fetchDashboardDetails = async (
     });
 
   await extensionSDK.localStorageSetItem(`${dashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId, queries, description }));
-  return { dashboardFilters, dashboardId, queries, description };
+  return { dashboardFilters, dashboardId, queries, description, prompt };
 };

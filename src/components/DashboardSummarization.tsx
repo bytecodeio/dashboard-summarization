@@ -38,11 +38,11 @@ import { fetchQueryData } from '../utils/fetchQueryData'
 import { collateSummaries } from '../utils/collateSummaries'
 import { generate24FactorSummary } from '../utils/generate24FactorSummary'
 import { DashboardEmbed } from './DashboardEmbed'
-
+import lensLogo from '../assets/lens.png'
 export const DashboardSummarization: React.FC = () => {
   const { extensionSDK, tileHostData, core40SDK, lookerHostData } = useContext(ExtensionContext) as ExtensionContextData
   const { dashboardFilters: tileDashboardFilters, dashboardId: tileDashboardId } = tileHostData
-  const [dashboardMetadata, setDashboardMetadata] = useState<DashboardMetadata>({ dashboardFilters: {}, dashboardId: '', queries: [], description: '' })
+  const [dashboardMetadata, setDashboardMetadata] = useState<DashboardMetadata>({ dashboardFilters: {}, dashboardId: '', queries: [], description: '' , prompt: ''})
   const [loadingDashboardMetadata, setLoadingDashboardMetadata] = useState<boolean>(false)
   const [querySummaries, setQuerySummaries] = useState<any[]>([])
   const [queryResults, setQueryResults] = useState<any[]>([])
@@ -50,6 +50,7 @@ export const DashboardSummarization: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const workspaceOauth = useWorkspaceOauth()
   const slackOauth = useSlackOauth()
+  const [temporaryPrompt, setTemporaryPrompt] = useState<string>('')
 
   const hostContext = lookerHostData?.route || ''
   const filterPart = hostContext.split('?')[1] || ''
@@ -78,10 +79,12 @@ export const DashboardSummarization: React.FC = () => {
     console.log('fetching query metadata for dashboard:', tileDashboardId);
     if (tileDashboardId) {
       setLoadingDashboardMetadata(true)
-      const { description, queries } = await fetchDashboardDetails(tileDashboardId, core40SDK, extensionSDK, dashboardFilters)
+      const dashboardDetails = await fetchDashboardDetails(tileDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData)
+      console.log('dashboardDetails:', dashboardDetails);
+      const { description, queries, prompt } = dashboardDetails
       if (!loadingDashboardMetadata) {
         await extensionSDK.localStorageSetItem(`${tileDashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId: tileDashboardId, queries, description }))
-        setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description })
+        setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt })
       }
     }
   }, [tileDashboardId, dashboardFilters, core40SDK, extensionSDK, setLoadingDashboardMetadata, setMessage, setDashboardMetadata]);
@@ -118,16 +121,17 @@ export const DashboardSummarization: React.FC = () => {
 
   // The explore is used in the link to explore assistant app, and is assigned based on the first query in the dashboard.
   const explore = dashboardMetadata?.queries[0]?.queryBody?.view
-
-  const prompt = "You are an analytics agent. Please summarize the 24 factors that went into this Market Score."
-  const sharedContext = ""
+console.log('dashboardMetadata:', dashboardMetadata);
+  const prompt = dashboardMetadata?.prompt || 'test'
+  // || "You are an analytics agent. Please summarize the 24 factors that went into this Market Score."
+  const sharedContext = dashboardMetadata
 
   // Automatically fetch query summaries and generate the 24 factors summary
   useEffect(() => {
     const generateSummary = async () => {
       setLoading(true);
       try {
-        await generate24FactorSummary(queryResults, extensionSDK, setFormattedData, prompt, sharedContext);
+        await generate24FactorSummary(queryResults, extensionSDK, setFormattedData, dashboardMetadata.prompt || '', sharedContext);
       } catch (error) {
         console.error('Error generating summaries and suggestions:', error);
       } finally {
@@ -135,10 +139,16 @@ export const DashboardSummarization: React.FC = () => {
       }
     };
 
-    if (queryResults.length > 0) {
+    if (queryResults.length > 0 && dashboardMetadata.prompt) {
       generateSummary();
     }
-  }, [queryResults, restfulService, extensionSDK, dashboardMetadata, setQuerySummaries, setFormattedData, prompt, sharedContext]);
+  }, [queryResults, restfulService, extensionSDK, dashboardMetadata.prompt, setFormattedData, sharedContext]);
+
+  const handlePromptSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setDashboardMetadata(prev => ({ ...prev, prompt: temporaryPrompt }))
+    setTemporaryPrompt('')
+  }
 
   return (
     <div className="dashboard-summarization">
@@ -147,27 +157,24 @@ export const DashboardSummarization: React.FC = () => {
           {message}
         </div>
       )}
+      {!dashboardMetadata.prompt && (
+        <form onSubmit={handlePromptSubmit} style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', paddingLeft: '1rem' }}>
+          <span role="img" aria-label="Generative AI Logo" style={{ marginRight: '0.5rem', fontSize: '24px' }}>🤖</span>
+          <input
+            type="text"
+            value={temporaryPrompt}
+            onChange={(e) => setTemporaryPrompt(e.target.value)}
+            placeholder="Enter your prompt"
+            style={{ flex: 1, padding: '0.5rem' }}
+          />
+          <button type="submit" style={{ marginLeft: '0.5rem', padding: '0.5rem 1rem' }}>Submit</button>
+        </form>
+      )}
       <div>
         <div style={{ marginBottom: '1rem', paddingLeft: '1rem' }}>
             <MarkdownComponent data={[formattedData]} />
           </div>
       </div>
-      {/* <div className="actions">
-        <div className='layoutBottom'>
-          <span style={{ fontSize: '0.9rem', opacity: !loading ? 0.8 : 0.2, width: '30%' }}>Actions</span>
-          <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'flex-end', width: '70%', opacity: !loading ? 1 : 0.2 }}>
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.9rem', opacity: !loading ? 0.8 : 0.2, paddingRight: '0.8rem' }}>Export</span>
-              <button disabled={loading || data.length <= 0} onClick={workspaceOauth} className='button' style={{ borderRadius: '50%', padding: '0.5rem' }}>
-                <img height={20} width={20} src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/de/Google_Chat_icon_%282020%29.svg/1024px-Google_Chat_icon_%282020%29.svg.png" />
-              </button>
-              <button disabled={loading || data.length <= 0} onClick={slackOauth} className='button' style={{ borderRadius: '50%', padding: '0.5rem', marginLeft: '2vw' }}>
-                <img height={20} width={20} src="https://cdn.worldvectorlogo.com/logos/slack-new-logo.svg" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div> */}
     </div>
   );
 }

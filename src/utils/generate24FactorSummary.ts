@@ -26,7 +26,7 @@ export const generate24FactorSummary = async (
           property_id: "some_property_id",
           user_id: "some_user_id",
         },
-        product_info:  {},
+        product_info:  {sharedContext, newQuerySummaries},
       })
   
       try {

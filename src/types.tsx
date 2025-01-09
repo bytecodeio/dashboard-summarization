@@ -29,7 +29,8 @@ export interface DashboardMetadata {
             model: string
         }
     },
-    description?: string | undefined
+    description?: string | undefined,
+    prompt?: string | undefined
 }
 export interface Query {
     queryBody: {
