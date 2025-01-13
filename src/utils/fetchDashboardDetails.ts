@@ -31,7 +31,6 @@ export const fetchDashboardDetails = async (
     const mountedElement = dashboardElements.find((element: any) => element.id === elementId);
     // extension_id: "mfa-pilot::dashboard-summarization"
     const note_text = mountedElement?.note_text;
-    console.log('note_text:', note_text);
     const doesItStartWithPrompt = note_text?.startsWith('Prompt:');
     if (doesItStartWithPrompt) {
       const prompt = note_text.split('Prompt:')[1].trim();
@@ -42,7 +41,7 @@ export const fetchDashboardDetails = async (
   const prompt = getPrompt(dashboardResponse);
   const queries = await core40SDK.ok(core40SDK.dashboard_dashboard_elements(
     dashboardId, 'query,result_maker,note_text,title,query_id'))
-    .then((res) => {
+    .then((res: any) => {
       return res.filter((d) => d.query !== null || d.result_maker !== null)
         .map((data) => {
           const { query, note_text, title } = data;

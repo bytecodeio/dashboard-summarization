@@ -51,6 +51,7 @@ export const DashboardSummarization: React.FC = () => {
   const workspaceOauth = useWorkspaceOauth()
   const slackOauth = useSlackOauth()
   const [temporaryPrompt, setTemporaryPrompt] = useState<string>('')
+  const [hasRun, setHasRun] = useState(false);
 
   const hostContext = lookerHostData?.route || ''
   const filterPart = hostContext.split('?')[1] || ''
@@ -59,7 +60,6 @@ export const DashboardSummarization: React.FC = () => {
   const dashboardFilters = Object.keys(tileDashboardFilters || {}).length === 0 ? urlDashboardFilters : tileDashboardFilters || {}
 
   useEffect(() => {
-    console.log('tileDashboardId:', tileDashboardId);
     if (tileDashboardId) {
       setDashboardURL(extensionSDK.lookerHostData?.hostUrl + "/embed/dashboards/" + tileDashboardId)
     }
@@ -68,11 +68,14 @@ export const DashboardSummarization: React.FC = () => {
   // const restfulService = process.env.RESTFUL_WEBSERVICE || ''
   const restfulService = 'https://restfulserviceimage-1098454044038.us-central1.run.app'
   useEffect(() => {
-    if (tileHostData.dashboardRunState === 'RUNNING') {
+    if (tileHostData.dashboardRunState === 'RUNNING' && !hasRun) {
       setData([])
       setLoading(false)
+      setHasRun(true);
+    } else if (tileHostData.dashboardRunState !== 'RUNNING') {
+      setHasRun(false);
     }
-  }, [tileHostData.dashboardRunState, setData, setLoading])
+  }, [tileHostData.dashboardRunState, setData, setLoading, hasRun]);
 
   // Fetch and set the metadata for the dashboard
   const fetchQueryMetadata = useCallback(async () => {
@@ -83,7 +86,7 @@ export const DashboardSummarization: React.FC = () => {
       console.log('dashboardDetails:', dashboardDetails);
       const { description, queries, prompt } = dashboardDetails
       if (!loadingDashboardMetadata) {
-        await extensionSDK.localStorageSetItem(`${tileDashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId: tileDashboardId, queries, description }))
+        await extensionSDK.localStorageSetItem((`${tileDashboardId}:${JSON.stringify(dashboardFilters)}`), JSON.stringify({ dashboardFilters, dashboardId: tileDashboardId, queries, description }))
         setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt })
       }
     }
@@ -114,10 +117,11 @@ export const DashboardSummarization: React.FC = () => {
 
   // Fetch dashboard metadata, including description and queries
   useEffect(() => {
-    if (dashboardMetadata.dashboardId === '') {
+    if (dashboardMetadata.dashboardId === '' || hasRun===false) {
       fetchQueryMetadata()
     }
-  }, [fetchQueryMetadata, dashboardMetadata, tileDashboardId, dashboardFilters, extensionSDK, setLoadingDashboardMetadata, setMessage, setDashboardMetadata]);
+  }, [fetchQueryMetadata, dashboardMetadata, tileDashboardId, dashboardFilters, extensionSDK, tileHostData.dashboardRunState, hasRun, setLoadingDashboardMetadata, setMessage, setDashboardMetadata]);
+
 
   // The explore is used in the link to explore assistant app, and is assigned based on the first query in the dashboard.
   const explore = dashboardMetadata?.queries[0]?.queryBody?.view
