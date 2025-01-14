@@ -6,7 +6,8 @@ export const generate24FactorSummary = async (
     extensionSDK: any,
     setFormattedData: (data: any) => void,
     prompt: string,
-    sharedContext: string,
+    sharedContext: Object,
+    marketData: Object,
 ): Promise<void> => {
     const ai_cf_auth_token = process.env.AI_CF_AUTH_TOKEN;
 
@@ -26,7 +27,7 @@ export const generate24FactorSummary = async (
           property_id: "some_property_id",
           user_id: "some_user_id",
         },
-        product_info:  {sharedContext, newQuerySummaries},
+        product_info:  {sharedContext, newQuerySummaries, marketData},
       })
   
       try {
