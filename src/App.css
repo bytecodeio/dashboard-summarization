@@ -32,3 +32,22 @@
   background-color: white;
   width: 100%;
 }
+
+.dashboard-summarization {
+  color: blue !important;
+  width: 95%;
+  overflow-y: auto;
+  height: auto;
+  scrollbar-width: thin;
+}
+
+
+.markdown > h2 {
+  color: blue;  
+}
+.markdown > h3 {
+  color: blue;  
+}
+.markdown > h4 {
+  color: blue;  
+}

@@ -52,6 +52,10 @@ export const DashboardSummarization: React.FC = () => {
   const dashboardFilters = Object.keys(tileDashboardFilters || {}).length === 0 ? urlDashboardFilters : tileDashboardFilters || {}
 
   const updateContext = async (key: string, value: Object, currentContext: any) => {
+    if (!currentContext) {
+      console.log('No context data found, creating new context data')
+      currentContext = {}
+    }
     currentContext[key] = value
     await extensionSDK.saveContextData(currentContext)
   }
