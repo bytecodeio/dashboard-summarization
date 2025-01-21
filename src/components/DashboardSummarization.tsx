@@ -28,17 +28,12 @@ import React, { useCallback, useContext, useEffect, useState } from 'react'
 
 import { ExtensionContext, ExtensionContext40, ExtensionContextData } from '@looker/extension-sdk-react'
 import { Filters } from '@looker/extension-sdk'
-import { GenerativeLogo, LandingPage } from './LandingPage'
 import MarkdownComponent from './MarkdownComponent'
-import useWorkspaceOauth from '../hooks/useWorkspaceOauth'
 import { SummaryDataContext } from '../contexts/SummaryDataContext'
-import useSlackOauth from '../hooks/useSlackOauth'
 import { fetchDashboardDetails } from '../utils/fetchDashboardDetails'
 import { DashboardMetadata, Query, QuerySummary, SummaryDataContextType } from '../types'
 import { fetchQueryData } from '../utils/fetchQueryData'
-import { collateSummaries } from '../utils/collateSummaries'
 import { generate24FactorSummary } from '../utils/generate24FactorSummary'
-import { get, set } from 'lodash'
 import md5 from 'md5'
 
 export const DashboardSummarization: React.FC = () => {
