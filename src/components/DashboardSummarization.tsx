@@ -25,7 +25,8 @@ SOFTWARE.
 */
 
 import React, { useCallback, useContext, useEffect, useState } from 'react'
-import { ExtensionContext, ExtensionContextData } from '@looker/extension-sdk-react'
+
+import { ExtensionContext, ExtensionContext40, ExtensionContextData } from '@looker/extension-sdk-react'
 import { Filters } from '@looker/extension-sdk'
 import { GenerativeLogo, LandingPage } from './LandingPage'
 import MarkdownComponent from './MarkdownComponent'
@@ -37,8 +38,9 @@ import { DashboardMetadata, Query, QuerySummary, SummaryDataContextType } from '
 import { fetchQueryData } from '../utils/fetchQueryData'
 import { collateSummaries } from '../utils/collateSummaries'
 import { generate24FactorSummary } from '../utils/generate24FactorSummary'
-import { DashboardEmbed } from './DashboardEmbed'
-import lensLogo from '../assets/lens.png'
+import { get, set } from 'lodash'
+import md5 from 'md5'
+
 export const DashboardSummarization: React.FC = () => {
   const { extensionSDK, tileHostData, core40SDK, lookerHostData } = useContext(ExtensionContext) as ExtensionContextData
   const { dashboardFilters: tileDashboardFilters, dashboardId: tileDashboardId } = tileHostData
@@ -54,34 +56,52 @@ export const DashboardSummarization: React.FC = () => {
   const urlDashboardFilters: Filters = Object.fromEntries(urlParams.entries())
   const dashboardFilters = Object.keys(tileDashboardFilters || {}).length === 0 ? urlDashboardFilters : tileDashboardFilters || {}
 
+  const updateContext = async (key: string, value: Object, currentContext: any) => {
+    currentContext[key] = value
+    await extensionSDK.saveContextData(currentContext)
+  }
+
+  const generateContextKey = (filters: Filters, prompt: string) => {
+    return md5(JSON.stringify(filters) + prompt)
+  }
+
   const initializeDashboard = useCallback(async () => {
 
     let newDashboardMetadata: DashboardMetadata | null  = null
-    if (tileDashboardId ) {
-      console.log('fetching query metadata for dashboard:', tileDashboardId);
-      
+    let loadFromContext = false
+
+    let savedContext = await extensionSDK.getContextData()
+    let contextKey = ''
+    if (tileDashboardId ) {    
       const dashboardDetails = await fetchDashboardDetails(tileDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
-      console.log('dashboardDetails:', dashboardDetails);
       const { description, queries, prompt } = dashboardDetails;
       setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt });  
       newDashboardMetadata = { dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt };
+        // log more details
+      contextKey = generateContextKey(dashboardFilters, prompt || '')
+      if (savedContext) {
+        if (savedContext[contextKey]) {
+          setFormattedData(savedContext[contextKey])
+          loadFromContext = true
+        }
+      }
     }
     const marketDashboardId = newDashboardMetadata && newDashboardMetadata.description ? newDashboardMetadata.description.split('Markets:')[1] : '';
     let marketDashboard: DashboardMetadata | null = null;
     let marketData: any = {};
     if (marketDashboardId ) {
       marketDashboard = await fetchDashboardDetails(marketDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
-      console.log('marketDashboard:', marketDashboard);
-      if (marketDashboard.queries.length > 0) marketData = await fetchQueryData(marketDashboard.queries, core40SDK);
+       if (marketDashboard.queries.length > 0) marketData = await fetchQueryData(marketDashboard.queries, core40SDK);
     }
 
     if (newDashboardMetadata && newDashboardMetadata.queries.length > 0) {
-      console.log('fetching query results for metadata:', newDashboardMetadata);
       const results = await fetchQueryData(newDashboardMetadata.queries, core40SDK);
 
-      if (results.length > 0 && (newDashboardMetadata?.prompt || prompt)) {
+      if (!loadFromContext && results.length > 0 && (newDashboardMetadata?.prompt || prompt)) {
         try {
-          await generate24FactorSummary(results, extensionSDK, setFormattedData, newDashboardMetadata?.prompt || prompt, newDashboardMetadata, marketData || {});
+          const newSummary = await generate24FactorSummary(results, extensionSDK, setFormattedData, newDashboardMetadata?.prompt || prompt, newDashboardMetadata, marketData || {})
+          await updateContext(contextKey, newSummary || {}, savedContext)
+          console.log('updated app context with key:', contextKey)
         } catch (error) {
           console.error('Error generating summaries and suggestions:', error);
         } 
