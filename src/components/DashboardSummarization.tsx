@@ -39,7 +39,7 @@ import md5 from 'md5'
 export const DashboardSummarization: React.FC = () => {
   const { extensionSDK, tileHostData, core40SDK, lookerHostData } = useContext(ExtensionContext) as ExtensionContextData
   const { dashboardFilters: tileDashboardFilters, dashboardId: tileDashboardId } = tileHostData
-  const [dashboardMetadata, setDashboardMetadata] = useState<DashboardMetadata>({ dashboardFilters: {}, dashboardId: '', queries: [], description: '' , prompt: ''})
+  const [dashboardMetadata, setDashboardMetadata] = useState<DashboardMetadata>({ dashboardFilters: {}, dashboardId: '', queries: [], description: '', prompt: '' })
   const [prompt, setPrompt] = useState<string>('')
   const { data, setData, formattedData, setFormattedData, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
   const [temporaryPrompt, setTemporaryPrompt] = useState<string>('')
@@ -66,17 +66,17 @@ export const DashboardSummarization: React.FC = () => {
 
   const initializeDashboard = useCallback(async () => {
 
-    let newDashboardMetadata: DashboardMetadata | null  = null
+    let newDashboardMetadata: DashboardMetadata | null = null
     let loadFromContext = false
 
     let savedContext = await extensionSDK.getContextData()
     let contextKey = ''
-    if (tileDashboardId ) {    
+    if (tileDashboardId) {
       const dashboardDetails = await fetchDashboardDetails(tileDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
       const { description, queries, prompt } = dashboardDetails;
-      setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt });  
+      setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt });
       newDashboardMetadata = { dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt };
-        // log more details
+      // log more details
       contextKey = generateContextKey(dashboardFilters, prompt || '')
       if (savedContext) {
         if (savedContext[contextKey]) {
@@ -88,9 +88,9 @@ export const DashboardSummarization: React.FC = () => {
     const marketDashboardId = newDashboardMetadata && newDashboardMetadata.description ? newDashboardMetadata.description.split('Markets:')[1] : '';
     let marketDashboard: DashboardMetadata | null = null;
     let marketData: any = {};
-    if (marketDashboardId ) {
+    if (marketDashboardId) {
       marketDashboard = await fetchDashboardDetails(marketDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
-       if (marketDashboard.queries.length > 0) marketData = await fetchQueryData(marketDashboard.queries, core40SDK);
+      if (marketDashboard.queries.length > 0) marketData = await fetchQueryData(marketDashboard.queries, core40SDK);
     }
 
     if (newDashboardMetadata && newDashboardMetadata.queries.length > 0) {
@@ -103,14 +103,14 @@ export const DashboardSummarization: React.FC = () => {
           console.log('updated app context with key:', contextKey)
         } catch (error) {
           console.error('Error generating summaries and suggestions:', error);
-        } 
+        }
       }
     }
   }, [tileDashboardId, tileHostData.dashboardRunState, extensionSDK, core40SDK, prompt, setDashboardMetadata, setFormattedData, dashboardFilters, tileHostData]);
 
   useEffect(() => {
     if (tileDashboardId)
-    initializeDashboard();
+      initializeDashboard();
   }, [tileHostData.dashboardRunState, prompt, tileDashboardId, extensionSDK]);
 
   const handlePromptSubmit = (e: React.FormEvent) => {
@@ -129,7 +129,18 @@ export const DashboardSummarization: React.FC = () => {
       )}
       {!dashboardMetadata.prompt && (
         <form onSubmit={handlePromptSubmit} style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', paddingLeft: '1rem' }}>
-          <span role="img" aria-label="Generative AI Logo" style={{ marginRight: '0.5rem', fontSize: '24px' }}>🤖</span>
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style={{ marginRight: '0.5rem' }}>
+            <circle cx="20" cy="20" r="20" fill="url(#paint0_linear_5319_50439)" />
+            <path d="M30.2238 24.2925C26.0857 24.2925 22.7196 20.9074 22.7196 16.7461C22.7196 16.5857 22.5904 16.4558 22.4309 16.4558C22.2715 16.4558 22.1423 16.5857 22.1423 16.7461C22.1423 20.9074 18.7761 24.2925 14.6381 24.2925C14.4786 24.2925 14.3494 24.4224 14.3494 24.5828C14.3494 24.7431 14.4786 24.8731 14.6381 24.8731C18.7761 24.8731 22.1423 28.2581 22.1423 32.4195C22.1423 32.5798 22.2715 32.7098 22.4309 32.7098C22.5904 32.7098 22.7196 32.5798 22.7196 32.4195C22.7196 28.2581 26.0857 24.8731 30.2238 24.8731C30.3832 24.8731 30.5124 24.7431 30.5124 24.5828C30.5124 24.4224 30.3832 24.2925 30.2238 24.2925Z" fill="white" />
+            <path d="M22.9211 9.88218C21.574 9.88218 20.4782 8.78027 20.4782 7.4255C20.4782 7.37328 20.4361 7.33093 20.3842 7.33093C20.3323 7.33093 20.2901 7.37328 20.2901 7.4255C20.2901 8.78027 19.1944 9.88218 17.8472 9.88218C17.7953 9.88218 17.7532 9.92453 17.7532 9.97675C17.7532 10.029 17.7953 10.0713 17.8472 10.0713C19.1944 10.0713 20.2901 11.1732 20.2901 12.528C20.2901 12.5802 20.3323 12.6226 20.3842 12.6226C20.4361 12.6226 20.4782 12.5802 20.4782 12.528C20.4782 11.1732 21.574 10.0713 22.9211 10.0713C22.9731 10.0713 23.0152 10.029 23.0152 9.97675C23.0152 9.92453 22.9731 9.88218 22.9211 9.88218Z" fill="white" />
+            <path d="M19.0026 16.2691C16.5417 16.2691 14.5399 14.2561 14.5399 11.7813C14.5399 11.6859 14.4631 11.6086 14.3682 11.6086C14.2734 11.6086 14.1965 11.6859 14.1965 11.7813C14.1965 14.2561 12.1947 16.2691 9.73379 16.2691C9.63894 16.2691 9.56207 16.3464 9.56207 16.4418C9.56207 16.5372 9.63894 16.6145 9.73379 16.6145C12.1947 16.6145 14.1965 18.6276 14.1965 21.1023C14.1965 21.1977 14.2734 21.275 14.3682 21.275C14.4631 21.275 14.5399 21.1977 14.5399 21.1023C14.5399 18.6276 16.5417 16.6145 19.0026 16.6145C19.0975 16.6145 19.1743 16.5372 19.1743 16.4418C19.1743 16.3464 19.0975 16.2691 19.0026 16.2691Z" fill="white" />
+            <defs>
+              <linearGradient id="paint0_linear_5319_50439" x1="7.5" y1="5.5" x2="54" y2="63.5" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#70D8C3" />
+                <stop offset="0.844127" stop-color="#062679" />
+              </linearGradient>
+            </defs>
+          </svg>
           <input
             type="text"
             value={temporaryPrompt}
@@ -141,9 +152,9 @@ export const DashboardSummarization: React.FC = () => {
         </form>
       )}
       <div>
-        <div style={{ marginBottom: '1rem', paddingLeft: '1rem' }}>
-            <MarkdownComponent data={[formattedData]} />
-          </div>
+        <div style={{ marginBottom: '1rem', paddingLeft: '1rem', marginLeft: '1rem' }}>
+          <MarkdownComponent data={[formattedData]} />
+        </div>
       </div>
     </div>
   );
