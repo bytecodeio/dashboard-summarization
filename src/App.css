@@ -34,7 +34,7 @@
 }
 
 .dashboard-summarization {
-  color: blue !important;
+  color: #ffffff !important;
   width: 95%;
   overflow-y: auto;
   height: auto;
@@ -43,11 +43,11 @@
 
 
 .markdown > h2 {
-  color: blue;  
+  color: #ffffff;  
 }
 .markdown > h3 {
-  color: blue;  
+  color: #ffffff;  
 }
 .markdown > h4 {
-  color: blue;  
+  color: #ffffff;  
 }
