@@ -35,6 +35,7 @@ import { DashboardMetadata, Query, QuerySummary, SummaryDataContextType } from '
 import { fetchQueryData } from '../utils/fetchQueryData'
 import { generate24FactorSummary } from '../utils/generate24FactorSummary'
 import md5 from 'md5'
+import './Spinner.css' // Import custom spinner CSS
 
 export const DashboardSummarization: React.FC = () => {
   const { extensionSDK, tileHostData, core40SDK, lookerHostData } = useContext(ExtensionContext) as ExtensionContextData
@@ -44,21 +45,13 @@ export const DashboardSummarization: React.FC = () => {
   const { data, setData, formattedData, setFormattedData, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
   const [temporaryPrompt, setTemporaryPrompt] = useState<string>('')
   const [shouldGenerateSummary, setShouldGenerateSummary] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // Add loading state
 
   const hostContext = lookerHostData?.route || ''
   const filterPart = hostContext.split('?')[1] || ''
   const urlParams = new URLSearchParams(filterPart)
   const urlDashboardFilters: Filters = Object.fromEntries(urlParams.entries())
   const dashboardFilters = Object.keys(tileDashboardFilters || {}).length === 0 ? urlDashboardFilters : tileDashboardFilters || {}
-
-  const updateContext = async (key: string, value: Object, currentContext: any) => {
-    if (!currentContext) {
-      console.log('No context data found, creating new context data')
-      currentContext = {}
-    }
-    currentContext[key] = value
-    await extensionSDK.saveContextData(currentContext)
-  }
 
   const generateContextKey = (filters: Filters, prompt: string) => {
     return md5(JSON.stringify(filters) + prompt)
@@ -69,42 +62,39 @@ export const DashboardSummarization: React.FC = () => {
     let newDashboardMetadata: DashboardMetadata | null = null
     let loadFromContext = false
 
-    let savedContext = await extensionSDK.getContextData()
     let contextKey = ''
     if (tileDashboardId) {
       const dashboardDetails = await fetchDashboardDetails(tileDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
       const { description, queries, prompt } = dashboardDetails;
       setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt });
       newDashboardMetadata = { dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt };
-      // log more details
       contextKey = generateContextKey(dashboardFilters, prompt || '')
-      if (savedContext) {
-        if (savedContext[contextKey]) {
-          setFormattedData(savedContext[contextKey])
-          loadFromContext = true
-        }
-      }
     }
     const marketDashboardId = newDashboardMetadata && newDashboardMetadata.description ? newDashboardMetadata.description.split('Markets:')[1] : '';
     let marketDashboard: DashboardMetadata | null = null;
     let marketData: any = {};
     if (marketDashboardId) {
+      setIsLoading(true); // Set loading state to true
       marketDashboard = await fetchDashboardDetails(marketDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
       if (marketDashboard.queries.length > 0) marketData = await fetchQueryData(marketDashboard.queries, core40SDK);
-    }
 
-    if (newDashboardMetadata && newDashboardMetadata.queries.length > 0) {
-      const results = await fetchQueryData(newDashboardMetadata.queries, core40SDK);
 
-      if (!loadFromContext && results.length > 0 && (newDashboardMetadata?.prompt || prompt)) {
-        try {
-          const newSummary = await generate24FactorSummary(results, extensionSDK, setFormattedData, newDashboardMetadata?.prompt || prompt, newDashboardMetadata, marketData || {})
-          await updateContext(contextKey, newSummary || {}, savedContext)
-          console.log('updated app context with key:', contextKey)
-        } catch (error) {
-          console.error('Error generating summaries and suggestions:', error);
+      if (newDashboardMetadata && newDashboardMetadata.queries.length > 0) {
+        const results = await fetchQueryData(newDashboardMetadata.queries, core40SDK);
+
+        if (results.length > 0 && (newDashboardMetadata?.prompt || prompt)) {
+          try {
+            setIsLoading(true); // Set loading state to true
+            const newSummary = await generate24FactorSummary(results, extensionSDK, setFormattedData, newDashboardMetadata?.prompt || prompt, newDashboardMetadata, marketData || {})
+            setIsLoading(false); // Set loading state to false
+            // Remove updating context data
+          } catch (error) {
+            setIsLoading(false); // Set loading state to false in case of error
+            console.error('Error generating summaries and suggestions:', error);
+          }
         }
       }
+      setIsLoading(false);
     }
   }, [tileDashboardId, tileHostData.dashboardRunState, extensionSDK, core40SDK, prompt, setDashboardMetadata, setFormattedData, dashboardFilters, tileHostData]);
 
@@ -151,11 +141,17 @@ export const DashboardSummarization: React.FC = () => {
           <button type="submit" style={{ marginLeft: '0.5rem', padding: '0.5rem 1rem' }}>Submit</button>
         </form>
       )}
-      <div>
-        <div style={{ marginBottom: '1rem', paddingLeft: '1rem', marginLeft: '1rem' }}>
-          <MarkdownComponent data={[formattedData]} />
+      {isLoading ? (
+        <div className="spinner-container">
+          <div className="spinner"></div>
         </div>
-      </div>
+      ) : (
+        <div>
+          <div style={{ marginBottom: '1rem', paddingLeft: '1rem', marginLeft: '1rem' }}>
+            <MarkdownComponent data={[formattedData]} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
