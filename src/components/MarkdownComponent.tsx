@@ -24,7 +24,7 @@ SOFTWARE.
 
 */
 
-import Markdown from "react-markdown";
+import Markdown from 'react-markdown';
 import React, { memo } from 'react';
 import rehypeRaw from "rehype-raw";
 

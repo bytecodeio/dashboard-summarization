@@ -7,9 +7,6 @@ export const generateFinalSummary = async (
   nextStepsInstructions: string,
 
 ): Promise<void> => {
-  const AI_ENDPOINT = 'https://alpha-mlops-agent-api.knocktest.com"';
-  // Change to point locally if you're testing.
-  // const AI_ENDPOINT = 'http://localhost:5000';
   const prompt = nextStepsInstructions;
   
   try {

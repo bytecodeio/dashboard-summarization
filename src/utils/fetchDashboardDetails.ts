@@ -58,7 +58,6 @@ export const fetchDashboardDetails = async (
           }
         });
     });
-
-  await extensionSDK.localStorageSetItem(`${dashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId, queries, description }));
+  // await extensionSDK.localStorageSetItem(`${dashboardId}:${JSON.stringify(dashboardFilters)}`, JSON.stringify({ dashboardFilters, dashboardId, queries, description }));
   return { dashboardFilters, dashboardId, queries, description, prompt };
 };

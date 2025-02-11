@@ -33,18 +33,18 @@ import { SummaryDataContext } from '../contexts/SummaryDataContext'
 import { fetchDashboardDetails } from '../utils/fetchDashboardDetails'
 import { DashboardMetadata, Query, QuerySummary, SummaryDataContextType } from '../types'
 import { fetchQueryData } from '../utils/fetchQueryData'
-import { generate24FactorSummary } from '../utils/generate24FactorSummary'
+import { generateArbitraryResponse } from '../utils/generateArbitraryResponse'
 import md5 from 'md5'
 import './Spinner.css' // Import custom spinner CSS
+import { generateFinalSummary } from '../utils/generateFinalSummary'
 
 export const DashboardSummarization: React.FC = () => {
   const { extensionSDK, tileHostData, core40SDK, lookerHostData } = useContext(ExtensionContext) as ExtensionContextData
   const { dashboardFilters: tileDashboardFilters, dashboardId: tileDashboardId } = tileHostData
   const [dashboardMetadata, setDashboardMetadata] = useState<DashboardMetadata>({ dashboardFilters: {}, dashboardId: '', queries: [], description: '', prompt: '' })
-  const [prompt, setPrompt] = useState<string>('')
+  const [prompt, setPrompt] = useState<string | null>(null)
   const { data, setData, formattedData, setFormattedData, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
   const [temporaryPrompt, setTemporaryPrompt] = useState<string>('')
-  const [shouldGenerateSummary, setShouldGenerateSummary] = useState(false);
   const [isLoading, setIsLoading] = useState(false); // Add loading state
 
   const hostContext = lookerHostData?.route || ''
@@ -53,22 +53,18 @@ export const DashboardSummarization: React.FC = () => {
   const urlDashboardFilters: Filters = Object.fromEntries(urlParams.entries())
   const dashboardFilters = Object.keys(tileDashboardFilters || {}).length === 0 ? urlDashboardFilters : tileDashboardFilters || {}
 
-  const generateContextKey = (filters: Filters, prompt: string) => {
-    return md5(JSON.stringify(filters) + prompt)
-  }
-
+  const restfulService = 'https://restful-service-730192175971.us-central1.run.app'
+  
   const initializeDashboard = useCallback(async () => {
 
     let newDashboardMetadata: DashboardMetadata | null = null
     let loadFromContext = false
 
-    let contextKey = ''
     if (tileDashboardId) {
       const dashboardDetails = await fetchDashboardDetails(tileDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
       const { description, queries, prompt } = dashboardDetails;
       setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt });
       newDashboardMetadata = { dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt };
-      contextKey = generateContextKey(dashboardFilters, prompt || '')
     }
     const marketDashboardId = newDashboardMetadata && newDashboardMetadata.description ? newDashboardMetadata.description.split('Markets:')[1] : '';
     let marketDashboard: DashboardMetadata | null = null;
@@ -85,7 +81,7 @@ export const DashboardSummarization: React.FC = () => {
         if (results.length > 0 && (newDashboardMetadata?.prompt || prompt)) {
           try {
             setIsLoading(true); // Set loading state to true
-            const newSummary = await generate24FactorSummary(results, extensionSDK, setFormattedData, newDashboardMetadata?.prompt || prompt, newDashboardMetadata, marketData || {})
+            const newSummary = await generateArbitraryResponse(results, extensionSDK, restfulService, setFormattedData, newDashboardMetadata?.prompt || prompt, newDashboardMetadata, marketData || {})
             setIsLoading(false); // Set loading state to false
             // Remove updating context data
           } catch (error) {
@@ -95,6 +91,13 @@ export const DashboardSummarization: React.FC = () => {
         }
       }
       setIsLoading(false);
+    } else {
+      console.log('No market dashboard found');
+      setIsLoading(true); // Set loading state to true
+      // const newSummary = generateFinalSummary([],  restfulService, extensionSDK, setFormattedData, newDashboardMetadata?.prompt || prompt || '', newDashboardMetadata, marketData || {})
+      const newSummary = await generateArbitraryResponse([], extensionSDK, restfulService, setFormattedData, newDashboardMetadata?.prompt || prompt || '', newDashboardMetadata, marketData || {})
+      setIsLoading(false); // Set loading state to false
+      
     }
   }, [tileDashboardId, tileHostData.dashboardRunState, extensionSDK, core40SDK, prompt, setDashboardMetadata, setFormattedData, dashboardFilters, tileHostData]);
 
@@ -126,8 +129,8 @@ export const DashboardSummarization: React.FC = () => {
             <path d="M19.0026 16.2691C16.5417 16.2691 14.5399 14.2561 14.5399 11.7813C14.5399 11.6859 14.4631 11.6086 14.3682 11.6086C14.2734 11.6086 14.1965 11.6859 14.1965 11.7813C14.1965 14.2561 12.1947 16.2691 9.73379 16.2691C9.63894 16.2691 9.56207 16.3464 9.56207 16.4418C9.56207 16.5372 9.63894 16.6145 9.73379 16.6145C12.1947 16.6145 14.1965 18.6276 14.1965 21.1023C14.1965 21.1977 14.2734 21.275 14.3682 21.275C14.4631 21.275 14.5399 21.1977 14.5399 21.1023C14.5399 18.6276 16.5417 16.6145 19.0026 16.6145C19.0975 16.6145 19.1743 16.5372 19.1743 16.4418C19.1743 16.3464 19.0975 16.2691 19.0026 16.2691Z" fill="white" />
             <defs>
               <linearGradient id="paint0_linear_5319_50439" x1="7.5" y1="5.5" x2="54" y2="63.5" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#70D8C3" />
-                <stop offset="0.844127" stop-color="#062679" />
+                <stop stopColor="#70D8C3" />
+                <stop offset="0.844127" stopColor="#062679" />
               </linearGradient>
             </defs>
           </svg>

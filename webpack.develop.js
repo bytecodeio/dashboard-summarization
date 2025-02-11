@@ -51,6 +51,14 @@ module.exports = {
         'X-Requested-With, content-type, Authorization',
     },
     https: true,
+    static: {
+      directory: __dirname + '/dist',
+      publicPath: '/',
+    },
+    devMiddleware: {
+      writeToDisk: true,
+    },
+    hot: true,
   },
   plugins: [...commonConfig.plugins],
 }

@@ -50,6 +50,8 @@ module.exports = {
   output: {
     path: __dirname + "/dist",
     filename: "dashboard_summarization.js",
+    publicPath: '/',
+    clean: true,
   },
   module: {
     rules: [

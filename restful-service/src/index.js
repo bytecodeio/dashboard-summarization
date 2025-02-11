@@ -102,6 +102,17 @@ app.post('/generateQuerySuggestions', verifyClientSecret, async (req, res) => {
         res.status(500).send('Internal Server Error');
     }
 });
+app.post('/generateArbitraryResponse', verifyClientSecret, async (req, res) => {
+    const { prompt, sharedContext, newQuerySummaries, additionalData } = req.body;
+    try {
+        const content = await generateArbitraryContent(generativeModel, prompt, sharedContext, newQuerySummaries, additionalData);
+        res.json({ content });
+    } catch (e) {
+        console.log('There was an error processing the arbitrary content request: ', e);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
 
 // for the individual query summary:
 async function generateQuerySummary(generativeModel, query, description) {
@@ -253,6 +264,36 @@ async function generateQuerySuggestions(generativeModel, queryResults, querySumm
     return querySuggestionsResp.response.candidates[0].content.parts[0].text;
 }
 
+async function generateArbitraryContent(generativeModel, prompt, sharedContext, newQuerySummaries, additionalData) {
+    const context = `
+    Shared Context: ${JSON.stringify(sharedContext)}
+    Query Summaries: ${JSON.stringify(newQuerySummaries)}
+    Additional Data: ${JSON.stringify(additionalData)}
+    `;
+
+    const arbitraryPrompt = {
+        contents: [
+            {
+                role: 'user',
+                parts: [{
+                    text: `
+                    You are a specialized answering assistant that can analyze data and provide insights.
+                    Use the following context to answer the user's prompt:
+                    
+                    ${context}
+                    
+                    User's prompt: ${prompt}
+                    `
+                }]
+            }
+        ]
+    };
+
+    const formattedResp = await generativeModel.generateContent(arbitraryPrompt);
+    return {
+        chat: formattedResp.response.candidates[0].content.parts[0].text
+    };
+}
 
 const PORT = process.env.PORT ? process.env.PORT : 5000
 
