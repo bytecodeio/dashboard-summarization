@@ -154,8 +154,57 @@ resource.labels.location = "us-central1"
 jsonPayload.component="dashboard-summarization-logs"
 ```
 
+### 2. Google Cloud OAuth Setup for Vertex AI
 
-### 2. Looker Extension Framework Setup
+To enable direct authentication with Vertex AI, you need to set up OAuth credentials in Google Cloud:
+
+1. **Create or Select a Google Cloud Project**
+   - Go to the [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select an existing one where you plan to use Vertex AI
+
+2. **Enable Required APIs**
+   - Navigate to "APIs & Services" > "Library"
+   - Search for and enable the following APIs:
+     - Vertex AI API
+     - Cloud Resource Manager API
+
+3. **Configure OAuth Consent Screen**
+   - Go to "APIs & Services" > "OAuth consent screen"
+   - Select the appropriate user type (Internal or External)
+   - Fill in the required fields:
+     - App name: "Dashboard Summarization"
+     - User support email: Your email address
+     - Developer contact information: Your email address
+   - Add the following scopes:
+     - `https://www.googleapis.com/auth/cloud-platform`
+   - Save and continue
+
+4. **Create OAuth Client ID**
+   - Go to "APIs & Services" > "Credentials"
+   - Click "Create Credentials" and select "OAuth client ID"
+   - Application type: Web application
+   - Name: "Dashboard Summarization Looker Extension"
+   - Authorized JavaScript origins:
+     - Add your Looker instance URL (e.g., `https://your-looker-instance.cloud.looker.com`)
+   - Authorized redirect URIs:
+     - Add your Looker instance URL followed by `/extensions/dashboard-summarization-extension/oauth-callback` 
+     - Example: `https://your-looker-instance.cloud.looker.com/extensions/dashboard-summarization-extension/oauth-callback`
+   - Click "Create"
+
+5. **Copy the Client ID**
+   - After creation, you'll see the Client ID displayed
+   - Copy this value to use in the extension settings
+
+6. **Configure the Extension Settings**
+   - Launch the Dashboard Summarization extension in Looker
+   - Click the "Settings" gear icon
+   - Paste your Client ID in the "Google OAuth Client ID" field
+   - Configure the Vertex AI project, location, and model settings
+   - Click "Authenticate" to connect with your Google account
+
+> **Note:** Ensure the Google Cloud account you use has appropriate permissions for Vertex AI. You may need to add appropriate IAM roles (like "Vertex AI User") to your account in the Google Cloud project.
+
+### 3. Looker Extension Framework Setup
 
 
 #### Getting Started for Local Development
