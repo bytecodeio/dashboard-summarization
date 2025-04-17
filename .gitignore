@@ -3,8 +3,6 @@ restful-service/src/node_modules
 restful-service/src/node_modules/
 restful-service-chat/node_modules/
 .env
-dist
-dist/
 restful-service/terraform/.terraform
 restful-service/terraform/.terraform.lock.hcl
 restful-service/terraform/terraform.tfstate
