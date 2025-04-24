@@ -27,6 +27,7 @@ SOFTWARE.
 import React from 'react'
 import { ExtensionProvider } from '@looker/extension-sdk-react'
 import { SummaryDataContext } from './contexts/SummaryDataContext'
+import { SettingsProvider } from './contexts/SettingsContext'
 import { hot } from 'react-hot-loader/root'
 
 import { DashboardSummarization } from './components/DashboardSummarization'
@@ -59,11 +60,13 @@ export const App = hot(() => {
 
   return (
     <ExtensionProvider>
-      <SummaryDataContext.Provider value={contextValue}>
-        <div className="container">
-          <DashboardSummarization />
-        </div>
-      </SummaryDataContext.Provider>
+      <SettingsProvider>
+        <SummaryDataContext.Provider value={contextValue}>
+          <div className="container">
+            <DashboardSummarization />
+          </div>
+        </SummaryDataContext.Provider>
+      </SettingsProvider>
     </ExtensionProvider>
   )
 })

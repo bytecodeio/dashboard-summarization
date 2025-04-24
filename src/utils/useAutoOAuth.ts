@@ -12,6 +12,8 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
   const authAttemptedRef = useRef<boolean>(false);
   // Track if settings have been loaded
   const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
+  // Store client ID in state rather than localStorage
+  const [clientId, setClientId] = useState<string | null>(null);
 
   // Check if token is valid
   const isTokenValid = useCallback(() => {
@@ -57,6 +59,11 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
       return;
     }
 
+    if (!clientId) {
+      console.error('Google OAuth client ID is missing. Please configure it in settings.');
+      return;
+    }
+
     // Mark that we've attempted auth for this session
     authAttemptedRef.current = true;
     setIsAuthenticating(true);
@@ -65,15 +72,6 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
     localStorage.setItem('pre_auth_url', window.location.href);
     
     try {
-      // Get client ID from localStorage where loadUserSettings would have stored it
-      const clientId = localStorage.getItem('google_oauth_client_id');
-      
-      if (!clientId) {
-        console.error('Google OAuth client ID is missing. Please configure it in settings.');
-        setIsAuthenticating(false);
-        return;
-      }
-      
       // Use extension SDK's OAuth capabilities
       const response = await extensionSDK.oauth2Authenticate(
         'https://accounts.google.com/o/oauth2/v2/auth',
@@ -95,13 +93,39 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
       console.error('OAuth authentication failed:', error);
       setIsAuthenticating(false);
     }
-  }, [extensionSDK, handleAuthSuccess, isAuthenticating, isTokenValid]);
+  }, [extensionSDK, handleAuthSuccess, isAuthenticating, isTokenValid, clientId]);
 
   // Load settings first, then check authentication status
   useEffect(() => {
     const loadSettingsAndCheckAuth = async () => {
-      // First load settings to ensure we have client ID
-      await loadUserSettings(core40SDK, extensionSDK);
+      try {
+        // Get settings from user attributes, not localStorage
+        const extensionId = extensionSDK?.lookerHostData?.extensionId;
+        if (extensionId) {
+          const model_application = extensionId.replace(/::/g, '_').replace(/-/g, '_').toLowerCase();
+          const attrName = `${model_application}_google_oauth_client_id`;
+          
+          const userId = (await core40SDK.ok(core40SDK.me())).id;
+          const userAttrs = await core40SDK.ok(
+            core40SDK.user_attribute_user_values({
+              user_id: userId,
+              fields: "name, value",
+              all_values: true
+            })
+          );
+          
+          const clientIdAttr = userAttrs.find((attr: any) => 
+            attr.name.toLowerCase() === attrName.toLowerCase()
+          );
+          
+          if (clientIdAttr && clientIdAttr.value) {
+            setClientId(clientIdAttr.value);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      }
+      
       setSettingsLoaded(true);
     };
     
@@ -119,9 +143,6 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
         return;
       }
       
-      // Get client ID to check if it's configured
-      const clientId = localStorage.getItem('google_oauth_client_id');
-      
       // Only attempt auth once and only if we have a clientID and need a token
       if (!authAttemptedRef.current && 
           ((triggerAuth && clientId) || (clientId && !isTokenValid()))) {
@@ -133,7 +154,7 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
     };
     
     checkAndAuthenticate();
-  }, [settingsLoaded, triggerAuth, isTokenValid, initiateAuth]);
+  }, [settingsLoaded, triggerAuth, isTokenValid, initiateAuth, clientId]);
 
-  return { isAuthenticating, oauthToken, initiateAuth, handleAuthSuccess };
+  return { isAuthenticating, oauthToken, initiateAuth, handleAuthSuccess, clientId };
 };

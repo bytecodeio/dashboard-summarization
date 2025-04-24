@@ -1,13 +1,18 @@
+import { SettingsContextProps, VertexSettings } from '../types';
+
 /**
  * Utility to load user settings from Looker user attributes
  * Works for all users regardless of admin status
  */
-export const loadUserSettings = async (core40SDK: any, extensionSDK: any): Promise<void> => {
+export const loadUserSettings = async (
+  core40SDK: any, 
+  extensionSDK: any
+): Promise<VertexSettings | null> => {
   try {
     const extensionId = extensionSDK?.lookerHostData?.extensionId;
     if (!extensionId) {
       console.error('Extension ID not available');
-      return;
+      return null;
     }
     
     // Convert model_application to lowercase for use in attribute names
@@ -28,50 +33,36 @@ export const loadUserSettings = async (core40SDK: any, extensionSDK: any): Promi
     console.log('User attribute values loaded:', userAttributeValues.length);
 
     // Map user attribute values to their corresponding settings
-    const settingsMap: Record<string, string> = {
-      'vertex_project': '',
-      'vertex_location': 'us-central1', // Default
-      'vertex_model': 'gemini-1.5-flash', // Default
-      'google_oauth_client_id': ''
+    const settings: VertexSettings = {
+      vertexProject: '',
+      vertexLocation: 'us-central1', // Default
+      vertexModel: 'gemini-1.5-flash', // Default
+      googleOAuthClientId: '',
     };
 
     // Check each user attribute for matching settings
-    let foundClientId = false;
     userAttributeValues.forEach((attr: any) => {
       if (attr.name && attr.name.toLowerCase().startsWith(`${model_application}_`)) {
         // Use case-insensitive matching for attribute names
         const settingKey = attr.name.toLowerCase().replace(`${model_application}_`, '');
         const value = attr.value;
         
-        // Only process specific settings
-        if (settingsMap.hasOwnProperty(settingKey) && value) {
-          console.log(`Loaded setting from user attributes: ${settingKey}`);
-          settingsMap[settingKey] = value;
-          
-          // Store in localStorage for easy access
-          localStorage.setItem(settingKey, value);
-          
-          // Track if we found a client ID
-          if (settingKey === 'google_oauth_client_id') {
-            foundClientId = true;
-          }
+        // Map user attribute names to settings properties
+        if (settingKey === 'vertex_project' && value) {
+          settings.vertexProject = value;
+        } else if (settingKey === 'vertex_location' && value) {
+          settings.vertexLocation = value;
+        } else if (settingKey === 'vertex_model' && value) {
+          settings.vertexModel = value;
+        } else if (settingKey === 'google_oauth_client_id' && value) {
+          settings.googleOAuthClientId = value;
         }
       }
     });
 
-    // Set any default values for empty settings
-    if (!settingsMap.vertex_location) {
-      localStorage.setItem('vertex_location', 'us-central1');
-    }
-    if (!settingsMap.vertex_model) {
-      localStorage.setItem('vertex_model', 'gemini-1.5-flash');
-    }
-    
-    console.log(`Client ID ${foundClientId ? 'found' : 'not found'} in user attributes`);
-    return foundClientId;
-
+    return settings;
   } catch (error) {
     console.error('Error loading user attribute values:', error);
-    return false;
+    return null;
   }
 };
