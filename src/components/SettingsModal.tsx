@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useState } from 'react';
 import { ExtensionContext } from '@looker/extension-sdk-react';
 import { useAutoOAuth } from '../utils/useAutoOAuth';
 import { loadUserSettings } from '../utils/loadUserSettings';
+import { isStorageAccessible } from '../types';
 
 interface SettingsModalProps {
   open: boolean;
@@ -14,6 +15,19 @@ interface Setting {
   value: string;
   description: string;
 }
+
+const safeLocalStorageGet = (key: string): string | null => {
+  if (isStorageAccessible(localStorage)) {
+    return localStorage.getItem(key);
+  }
+  return null;
+};
+
+const safeLocalStorageSet = (key: string, value: string): void => {
+  if (isStorageAccessible(localStorage)) {
+    localStorage.setItem(key, value);
+  }
+};
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   const { core40SDK, extensionSDK } = useContext(ExtensionContext);
@@ -53,7 +67,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
   const [vertexTestResult, setVertexTestResult] = useState<boolean | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [oauthToken, setOauthToken] = useState<string | null>(localStorage.getItem('vertex_oauth_token'));
+  const [oauthToken, setOauthToken] = useState<string | null>(safeLocalStorageGet('vertex_oauth_token'));
 
   // Use our hook but don't auto-authenticate
   const { initiateAuth, handleAuthSuccess } = useAutoOAuth(false);
@@ -67,24 +81,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
       ...prevSettings,
       vertex_project: {
         ...prevSettings.vertex_project,
-        value: localStorage.getItem('vertex_project') || ''
+        value: safeLocalStorageGet('vertex_project') || ''
       },
       vertex_location: {
         ...prevSettings.vertex_location,
-        value: localStorage.getItem('vertex_location') || 'us-central1'
+        value: safeLocalStorageGet('vertex_location') || 'us-central1'
       },
       vertex_model: {
         ...prevSettings.vertex_model,
-        value: localStorage.getItem('vertex_model') || 'gemini-1.5-flash'
+        value: safeLocalStorageGet('vertex_model') || 'gemini-1.5-flash'
       },
       google_oauth_client_id: {
         ...prevSettings.google_oauth_client_id,
-        value: localStorage.getItem('google_oauth_client_id') || ''
+        value: safeLocalStorageGet('google_oauth_client_id') || ''
       }
     }));
     
     // Also update OAuth token status
-    setOauthToken(localStorage.getItem('vertex_oauth_token'));
+    setOauthToken(safeLocalStorageGet('vertex_oauth_token'));
   };
 
   // OAuth authentication - as a function that can be called on demand
@@ -140,7 +154,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
     }));
     
     // Also update localStorage for backward compatibility during transition
-    localStorage.setItem(id, value);
+    safeLocalStorageSet(id, value);
     
     // Ensure the user attribute name is lowercase
     const prefixedId = `${model_application}_${id}`.toLowerCase();
@@ -194,7 +208,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
     try {
       setVertexTestResult(null);
       
-      const token = localStorage.getItem('vertex_oauth_token');
+      const token = safeLocalStorageGet('vertex_oauth_token');
       if (!token) {
         console.error('No OAuth token available');
         setVertexTestResult(false);
@@ -267,11 +281,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
       }));
       
       // Also update localStorage
-      localStorage.setItem(key, String(value));
+      safeLocalStorageSet(key, String(value));
     });
     
     // Clear token
-    localStorage.removeItem('vertex_oauth_token');
+    safeLocalStorageSet('vertex_oauth_token', '');
     setOauthToken(null);
     
     // Update user attributes
