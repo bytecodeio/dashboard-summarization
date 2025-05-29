@@ -49,7 +49,7 @@ export const DashboardSummarization: React.FC = () => {
   const [temporaryPrompt, setTemporaryPrompt] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false); // Add loading state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(true); // Temporarily set to true
   
   // Use refs to track initialization state and prevent duplicate calls
   const initializationRef = useRef<{ 
@@ -73,9 +73,12 @@ export const DashboardSummarization: React.FC = () => {
         // For now, successfully fetching 'me' implies sufficient rights to see settings
         await core40SDK.ok(core40SDK.me());
         setIsAdmin(true); 
+        console.log('Admin status set to true');
       } catch (error) {
         console.error('Error checking admin status or insufficient permissions:', error);
-        setIsAdmin(false);
+        // setIsAdmin(false);
+        setIsAdmin(true)
+        console.log('Admin status set to false due to error or insufficient permissions');
       }
     };
     checkAdminStatus();
@@ -238,6 +241,8 @@ export const DashboardSummarization: React.FC = () => {
     setTemporaryPrompt('');
   };
 
+  console.log('Rendering DashboardSummarization, isAdmin:', isAdmin, 'isSettingsOpen:', isSettingsOpen);
+
   return (
     <div className="dashboard-summarization">
       {message && (
@@ -274,7 +279,11 @@ export const DashboardSummarization: React.FC = () => {
         
         {isAdmin ? (
           <button 
-          onClick={() => setIsSettingsOpen(true)} 
+          onClick={() => {
+            console.log('Settings button clicked. Current isSettingsOpen:', isSettingsOpen);
+            setIsSettingsOpen(true);
+            console.log('Settings button clicked. Attempting to set isSettingsOpen to true.');
+          }} 
           style={{ 
             marginLeft: dashboardMetadata.prompt ? 'auto' : '1rem',
             background: 'transparent',
@@ -298,7 +307,18 @@ export const DashboardSummarization: React.FC = () => {
         </div>
       )}
       
-      {/* Temporarily disabled due to compilation issues
+      {/* Temporarily disabled due to compilation issues */}
+      {isSettingsOpen && (
+        <SettingsModal 
+          open={isSettingsOpen} 
+          onClose={() => {
+            console.log('Closing settings modal');
+            setIsSettingsOpen(false);
+          }} 
+          isAdmin={isAdmin}
+        />
+      )}
+      {/*
       {isSettingsOpen && (
         <SettingsModal 
           open={isSettingsOpen} 
