@@ -2,7 +2,6 @@ import React, { useContext, useEffect, useState } from 'react';
 import { ExtensionContext } from '@looker/extension-sdk-react';
 import { useAutoOAuth } from '../utils/useAutoOAuth';
 import { loadUserSettings } from '../utils/loadUserSettings';
-import { isStorageAccessible } from '../types';
 
 interface SettingsModalProps {
   open: boolean;
@@ -15,19 +14,6 @@ interface Setting {
   value: string;
   description: string;
 }
-
-const safeLocalStorageGet = (key: string): string | null => {
-  if (isStorageAccessible(localStorage)) {
-    return localStorage.getItem(key);
-  }
-  return null;
-};
-
-const safeLocalStorageSet = (key: string, value: string): void => {
-  if (isStorageAccessible(localStorage)) {
-    localStorage.setItem(key, value);
-  }
-};
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   const { core40SDK, extensionSDK } = useContext(ExtensionContext);

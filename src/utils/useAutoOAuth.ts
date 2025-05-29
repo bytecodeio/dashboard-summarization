@@ -44,15 +44,9 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
 
   // Initiate OAuth flow
   const initiateAuth = useCallback(async () => {
-    // Skip if already authenticating or if we've already attempted auth
-    if (isAuthenticating || authAttemptedRef.current) {
-      console.log('OAuth flow already in progress or previously attempted, skipping duplicate request');
-      return;
-    }
-
-    // Double-check if token is valid before proceeding
-    if (isTokenValid()) {
-      console.log('Valid token found, skipping authentication');
+    // Skip if already authenticating
+    if (isAuthenticating) {
+      console.log('OAuth flow already in progress, skipping duplicate request');
       return;
     }
 
@@ -69,6 +63,7 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
     setPreAuthUrl(window.location.href);
     
     try {
+      console.log('Starting OAuth authentication flow...');
       // Use extension SDK's OAuth capabilities
       const response = await extensionSDK.oauth2Authenticate(
         'https://accounts.google.com/o/oauth2/v2/auth',
@@ -85,12 +80,16 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
       } else {
         console.error('Failed to get access token');
         setIsAuthenticating(false);
+        // Reset auth attempted flag on failure so it can be tried again
+        authAttemptedRef.current = false;
       }
     } catch (error) {
       console.error('OAuth authentication failed:', error);
       setIsAuthenticating(false);
+      // Reset auth attempted flag on failure so it can be tried again
+      authAttemptedRef.current = false;
     }
-  }, [extensionSDK, handleAuthSuccess, isAuthenticating, isTokenValid, clientId]);
+  }, [extensionSDK, handleAuthSuccess, isAuthenticating, clientId]);
 
   // Load settings first, then check authentication status
   useEffect(() => {
@@ -102,21 +101,25 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
           const model_application = extensionId.replace(/::/g, '_').replace(/-/g, '_').toLowerCase();
           const attrName = `${model_application}_google_oauth_client_id`;
           
-          const userId = (await core40SDK.ok(core40SDK.me())).id;
-          const userAttrs = await core40SDK.ok(
-            core40SDK.user_attribute_user_values({
-              user_id: userId,
-              fields: "name, value",
-              all_values: true
-            })
-          );
+          const user = await core40SDK.ok(core40SDK.me());
+          const userId = user.id;
           
-          const clientIdAttr = userAttrs.find((attr: any) => 
-            attr.name.toLowerCase() === attrName.toLowerCase()
-          );
-          
-          if (clientIdAttr && clientIdAttr.value) {
-            setClientId(clientIdAttr.value);
+          if (userId) {
+            const userAttrs = await core40SDK.ok(
+              core40SDK.user_attribute_user_values({
+                user_id: userId,
+                fields: "name, value",
+                all_values: true
+              })
+            );
+            
+            const clientIdAttr = userAttrs.find((attr: any) => 
+              attr.name.toLowerCase() === attrName.toLowerCase()
+            );
+            
+            if (clientIdAttr && clientIdAttr.value) {
+              setClientId(clientIdAttr.value);
+            }
           }
         }
       } catch (error) {
@@ -137,12 +140,25 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
       // Check if token exists and is valid
       if (isTokenValid()) {
         console.log('Valid OAuth token exists, no need to authenticate');
+        return;
       }
       
-      // Only attempt auth once and only if we have a clientID and need a token
-      if (!authAttemptedRef.current && 
-          ((triggerAuth && clientId) || (clientId && !isTokenValid()))) {
+      // Reset auth attempted flag if token is invalid/missing
+      if (!isTokenValid()) {
+        authAttemptedRef.current = false;
+      }
+      
+      // Trigger auth if:
+      // 1. triggerAuth is true and we haven't attempted yet, OR
+      // 2. We have a clientId and no valid token and haven't attempted yet
+      if (!authAttemptedRef.current && triggerAuth && clientId) {
+        console.log('Triggering OAuth authentication...');
         await initiateAuth();
+      } else if (!authAttemptedRef.current && clientId && !isTokenValid()) {
+        console.log('No valid token found, triggering OAuth authentication...');
+        await initiateAuth();
+      } else if (triggerAuth && !clientId) {
+        console.log('OAuth client ID is missing. Please configure it in settings.');
       }
     };
     
