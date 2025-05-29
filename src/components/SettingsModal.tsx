@@ -1,7 +1,8 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { ExtensionContext } from '@looker/extension-sdk-react';
 import { useAutoOAuth } from '../utils/useAutoOAuth';
-import { loadUserSettings } from '../utils/loadUserSettings';
+import { useSettings } from '../contexts/SettingsContext';
+import { testVertexSettings as testVertexSettingsUtil } from '../utils/vertexUtils';
 
 interface SettingsModalProps {
   open: boolean;
@@ -61,12 +62,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
   const [userAttributes, setUserAttributes] = useState<{ id: string | undefined, name: string, value?: string }[]>([]);
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
   const [vertexTestResult, setVertexTestResult] = useState<boolean | null>(null);
+  // State to show success message
+  const [saveSuccess, setSaveSuccess] = useState<boolean | null>(null);
 
   // Use our hook but don't auto-authenticate
   const { initiateAuth, oauthToken } = useAutoOAuth(false);
 
+  // Create refs for uncontrolled inputs
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
   // Load user attribute values
-  const loadUserAttributeValues = async () => {
+  const loadUserAttributeValues = useCallback(async () => {
     try {
       const user = await core40SDK.ok(core40SDK.me());
       const userId = user.id;
@@ -93,17 +99,30 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
               ...updatedSettings[key],
               value: attr.value
             };
+            // Set initial value in the ref if it exists
+            if (inputRefs.current[key]) {
+              inputRefs.current[key]!.value = attr.value;
+            }
           } else {
             const defaultValue = defaultSettingValues[key];
             if (defaultValue !== undefined) {
               updatedSettings[key].value = defaultValue;
+              // Set default value in the ref if it exists
+              if (inputRefs.current[key]) {
+                inputRefs.current[key]!.value = defaultValue;
+              }
             } else {
               updatedSettings[key].value = '';
+              // Clear the ref if it exists
+              if (inputRefs.current[key]) {
+                inputRefs.current[key]!.value = '';
+              }
             }
           }
         });
         
         setSettings(updatedSettings);
+        
         // Map SDK response to the structure expected by userAttributes state
         const mappedUserAttrs = userAttrsSDK.map(attr => ({
           id: attr.user_attribute_id, // Map user_attribute_id to id
@@ -121,16 +140,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
           ...defaultState[key],
           value: defaultSettingValues[key]
         };
+        // Set default value in the ref if it exists
+        if (inputRefs.current[key]) {
+          inputRefs.current[key]!.value = defaultSettingValues[key];
+        }
       });
       setSettings(defaultState);
     }
-  };
+  }, [core40SDK, model_application]);
 
   // OAuth authentication - as a function that can be called on demand
   const doOAuth = async () => {
     try {
-      // Check if we have a client ID
-      if (!settings.google_oauth_client_id.value) {
+      // Check if we have a client ID from the ref
+      const clientId = inputRefs.current.google_oauth_client_id?.value;
+      if (!clientId) {
         console.error('OAuth client ID is required but not provided');
         return false;
       }
@@ -149,91 +173,131 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       loadUserAttributeValues();
       // Optionally, initiate OAuth if no token is found when the modal opens
       // and the client ID is available.
-      // Check oauthToken from the hook directly instead of localStorage
-      if (!oauthToken && settings.google_oauth_client_id.value) {
+      const clientId = inputRefs.current.google_oauth_client_id?.value;
+      if (!oauthToken && clientId) {
         console.log('Modal opened, no token in hook state, and client ID is set. Initiating OAuth flow.');
         initiateAuth();
       }
     }
-  }, [open, core40SDK, settings.google_oauth_client_id.value, initiateAuth, loadUserAttributeValues, oauthToken]); // Added oauthToken to dependencies
+  }, [open, initiateAuth, loadUserAttributeValues, oauthToken]); // Remove core40SDK and settings dependency
 
-  // Check admin status - REMOVED, isAdmin is now a prop
-  /*
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      try {
-        const response = await core40SDK.ok(core40SDK.me());
-        // Check if user has admin permissions
-        setIsAdmin(true); // For now, allow all users to see settings
-      } catch (error) {
-        console.error('Error checking admin status:', error);
-      }
-    };
-    checkAdminStatus();
-  }, [core40SDK]);
-  */
-
-  // Handle saving settings to user attributes
-  const handleSaveSetting = async (id: string, value: string) => {
-    // Update local state
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      [id]: {
-        ...prevSettings[id],
-        value
-      }
-    }));
-    
-    const prefixedId = `${model_application}_${id}`.toLowerCase();
-    
+  // Handle saving all settings to user attributes
+  const handleSaveAllSettings = async () => {
+    setSaveSuccess(null);
     try {
-      const user = await core40SDK.ok(core40SDK.me());
-      const userId = user.id;
+      // Get values from refs
+      const updatedSettings = { ...settings };
+      Object.keys(updatedSettings).forEach((key) => {
+        if (inputRefs.current[key]) {
+          updatedSettings[key].value = inputRefs.current[key]?.value || '';
+        }
+      });
+      setSettings(updatedSettings);
       
-      if (!userId) {
-        console.error('Unable to get user ID');
-        return;
-      }
-      
-      const userAttribute = userAttributes.find(
-        (attr) => attr.name.toLowerCase() === prefixedId
-      );
-      
-      console.log('userAttribute:', userAttribute, 'for name:', prefixedId);
-      
-      if (userAttribute && userAttribute.id) {
-        // Corrected SDK call: user_attribute_id, user_id, body
-        await core40SDK.ok(
-          core40SDK.set_user_attribute_user_value(userAttribute.id, userId, { value })
-        );
-      } else {
-        const newUserAttribute = await core40SDK.ok(
-          core40SDK.create_user_attribute({
-            name: prefixedId.toLowerCase(),
-            label: prefixedId, // Consider a more user-friendly label
-            type: 'string',
-            default_value: value,
-            value_is_hidden: false,
-            user_can_view: true,
-            user_can_edit: true,
-          })
+      // Then save to user attributes
+      for (const [id, setting] of Object.entries(updatedSettings)) {
+        const prefixedId = `${model_application}_${id}`.toLowerCase();
+        const value = setting.value;
+        
+        const user = await core40SDK.ok(core40SDK.me());
+        const userId = user.id;
+        
+        if (!userId) {
+          console.error('Unable to get user ID');
+          continue;
+        }
+        
+        // First check if the user attribute exists
+        let userAttributeId;
+        
+        // Find in local state first
+        const existingAttribute = userAttributes.find(
+          (attr) => attr.name.toLowerCase() === prefixedId.toLowerCase()
         );
         
-        if (newUserAttribute.id) {
-          // Corrected SDK call: user_attribute_id, user_id, body
-          await core40SDK.ok(
-            core40SDK.set_user_attribute_user_value(newUserAttribute.id, userId, { value })
-          );
-          // Add the new attribute to the local state, ensuring correct mapping
-          setUserAttributes([...userAttributes, { 
-            id: newUserAttribute.id, 
-            name: newUserAttribute.name || prefixedId, // Use name from response if available
-            value: value 
-          }]);
+        if (existingAttribute && existingAttribute.id) {
+          userAttributeId = existingAttribute.id;
+        } else {
+          // If not found in local state, try to find it in the system
+          try {
+            const allUserAttributes = await core40SDK.ok(
+              core40SDK.all_user_attributes({fields: "id,name"})
+            );
+            
+            const foundAttribute = allUserAttributes.find(
+              (attr: any) => attr.name.toLowerCase() === prefixedId.toLowerCase()
+            );
+            
+            if (foundAttribute) {
+              userAttributeId = foundAttribute.id;
+              // Update local state
+              setUserAttributes(prev => [...prev.filter(a => a.name.toLowerCase() !== prefixedId.toLowerCase()), 
+                { id: foundAttribute.id, name: foundAttribute.name, value }]);
+            }
+          } catch (error) {
+            console.error(`Error finding user attribute ${prefixedId}:`, error);
+          }
+        }
+        
+        // If user attribute exists, update it
+        if (userAttributeId) {
+          try {
+            console.log(`Updating existing user attribute: ${prefixedId} (ID: ${userAttributeId}) for user ${userId} with value: ${value}`);
+            
+            // Use the correct SDK method for updating user attribute values
+            await core40SDK.ok(
+              core40SDK.set_user_attribute_user_value(userAttributeId, userId, { value })
+            );
+          } catch (error) {
+            console.error(`Error updating user attribute ${prefixedId}:`, error);
+            throw error; // Rethrow to trigger the outer catch block
+          }
+        } else {
+          // Create a new user attribute if it doesn't exist
+          try {
+            console.log(`Creating new user attribute: ${prefixedId}`);
+            const newUserAttribute = await core40SDK.ok(
+              core40SDK.create_user_attribute({
+                name: prefixedId.toLowerCase(),
+                label: setting.name, // Use a more user-friendly label
+                type: 'string',
+                default_value: value,
+                value_is_hidden: false,
+                user_can_view: true,
+                user_can_edit: true,
+              })
+            );
+            
+            if (newUserAttribute.id) {
+              console.log(`Setting value for new user attribute: ${prefixedId} (ID: ${newUserAttribute.id}) for user ${userId} with value: ${value}`);
+              
+              // Use the correct SDK method for the new attribute
+              await core40SDK.ok(
+                core40SDK.set_user_attribute_user_value(newUserAttribute.id, userId, { value })
+              );
+              
+              // Add the new attribute to the local state
+              setUserAttributes(prev => [...prev, { 
+                id: newUserAttribute.id, 
+                name: newUserAttribute.name || prefixedId,
+                value: value 
+              }]);
+            }
+          } catch (error) {
+            console.error(`Error creating user attribute ${prefixedId}:`, error);
+            throw error; // Rethrow to trigger the outer catch block
+          }
         }
       }
+      
+      // Show success message
+      setSaveSuccess(true);
+      console.log("All settings saved successfully!");
+      return true;
     } catch (error) {
-      console.error('Error saving user attribute:', error);
+      console.error('Error saving user attributes:', error);
+      setSaveSuccess(false);
+      return false;
     }
   };
 
@@ -242,14 +306,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
     try {
       setVertexTestResult(null);
       
+      // Save settings first before testing
+      await handleSaveAllSettings();
+      
       // Use oauthToken directly from the useAutoOAuth hook
       const tokenToUse = oauthToken; 
       console.log('Token from useAutoOAuth state (for test):', tokenToUse);
 
-      // Get settings from component state
-      const project = settings.vertex_project.value || defaultSettingValues.vertex_project;
-      const location = settings.vertex_location.value || defaultSettingValues.vertex_location;
-      const model = settings.vertex_model.value || defaultSettingValues.vertex_model;
+      // Get settings from refs
+      const project = inputRefs.current.vertex_project?.value || defaultSettingValues.vertex_project;
+      const location = inputRefs.current.vertex_location?.value || defaultSettingValues.vertex_location;
+      const model = inputRefs.current.vertex_model?.value || defaultSettingValues.vertex_model;
 
       console.log('Vertex Settings for API call: Project:', project, 'Location:', location, 'Model:', model);
 
@@ -260,7 +327,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       }
       
       if (!project || !location || !model) {
-        console.error('Vertex settings (project, location, model) are incomplete in state for testVertexSettings');
+        console.error('Vertex settings (project, location, model) are incomplete for testVertexSettings');
         setVertexTestResult(false);
         return false;
       }
@@ -302,6 +369,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
 
   // Reset all settings
   const handleReset = async () => {
+    // Reset form values using refs
+    Object.entries(defaultSettingValues).forEach(([key, value]) => {
+      if (inputRefs.current[key]) {
+        inputRefs.current[key]!.value = value;
+      }
+    });
+    
+    // Reset settings state
     const newSettingsState = { ...settings };
     Object.entries(defaultSettingValues).forEach(([key, value]) => {
       newSettingsState[key] = {
@@ -309,8 +384,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
         value: value
       };
     });
+    
     setSettings(newSettingsState);
     
+    // Save defaults to user attributes
     for (const [key, value] of Object.entries(defaultSettingValues)) {
       const prefixedId = `${model_application}_${key}`.toLowerCase();
       try {
@@ -369,13 +446,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
                     <div className="client-id-container">
                       <input
                         type="text"
-                        value={String(setting.value)}
-                        onChange={(e) => handleSaveSetting(setting.id, e.target.value)}
+                        defaultValue={setting.value}
+                        ref={el => inputRefs.current[setting.id] = el}
                         className="input-field"
                       />
                       <button 
-                        onClick={doOAuth} 
-                        disabled={!setting.value}
+                        onClick={async () => {
+                          await handleSaveAllSettings();
+                          doOAuth();
+                        }}
+                        disabled={!inputRefs.current[setting.id]?.value}
                         className="auth-button"
                       >
                         Authenticate
@@ -384,8 +464,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
                   ) : (
                     <input
                       type="text"
-                      value={String(setting.value)}
-                      onChange={(e) => handleSaveSetting(setting.id, e.target.value)}
+                      defaultValue={setting.value}
+                      ref={el => inputRefs.current[setting.id] = el}
                       className="input-field"
                     />
                   )}
@@ -401,6 +481,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
           </ul>
           
           <div className="settings-status">
+            {saveSuccess !== null && (
+              <p className={saveSuccess ? "status-passed" : "status-failed"}>
+                {saveSuccess 
+                  ? "Settings saved successfully!" 
+                  : "Error saving settings. Please try again."}
+              </p>
+            )}
             <p>
               OAuth Status: {oauthToken ? 
                 <span className="status-passed">Authenticated</span> : 
@@ -418,6 +505,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
           </div>
           
           <div className="settings-buttons">
+            <button onClick={handleSaveAllSettings} className="save-button">Save Settings</button>
             <button onClick={testVertexSettings} className="test-button">Test Settings</button>
             <button onClick={handleReset} className="reset-button">Reset All Settings</button>
           </div>

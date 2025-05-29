@@ -25,11 +25,11 @@ SOFTWARE.
 */
 
 import React, { useCallback, useContext, useEffect, useState, useRef } from 'react'
-
 import { ExtensionContext, ExtensionContext40, ExtensionContextData } from '@looker/extension-sdk-react'
 import { Filters } from '@looker/extension-sdk'
 import MarkdownComponent from './MarkdownComponent'
 import { SummaryDataContext } from '../contexts/SummaryDataContext'
+import { useSettings } from '../contexts/SettingsContext' // Import settings context
 import { fetchDashboardDetails } from '../utils/fetchDashboardDetails'
 import { DashboardMetadata, Query, QuerySummary, SummaryDataContextType } from '../types'
 import { fetchQueryData } from '../utils/fetchQueryData'
@@ -53,6 +53,9 @@ export const DashboardSummarization: React.FC = () => {
   
   const [queryResults, setQueryResults] = useState<any[] | null>(null);
   const [marketInfo, setMarketInfo] = useState<{ data: any, dashboard: DashboardMetadata | null }>({ data: {}, dashboard: null });
+  
+  // Get settings from context
+  const { settings } = useSettings();
 
   // Use refs to track initialization state and prevent duplicate calls
   const initializationRef = useRef<{ 
@@ -240,11 +243,11 @@ export const DashboardSummarization: React.FC = () => {
     console.log('generateSummaryEffect: Attempting to generate summary. Effective prompt:', effectivePrompt);
     setIsLoading(true);
 
-    // Get Vertex settings - still using localStorage temporarily until context is fully implemented
+    // Get Vertex settings from context
     const vertexSettings = {
-      vertexProject: localStorage.getItem('vertex_project') || '',
-      vertexLocation: localStorage.getItem('vertex_location') || 'us-central1',
-      vertexModel: localStorage.getItem('vertex_model') || 'gemini-1.5-flash'
+      vertexProject: settings.vertexProject,
+      vertexLocation: settings.vertexLocation,
+      vertexModel: settings.vertexModel
     };
 
     const generationData = queryResults || []; // Use empty array if queryResults is null but dashboard has no queries
@@ -268,7 +271,7 @@ export const DashboardSummarization: React.FC = () => {
       setIsLoading(false);
     });
 
-  }, [queryResults, dashboardMetadata, prompt, marketInfo, oauthToken, isAuthenticating, extensionSDK, setFormattedData]);
+  }, [queryResults, dashboardMetadata, prompt, marketInfo, oauthToken, isAuthenticating, extensionSDK, setFormattedData, settings]);
 
 
   const handlePromptSubmit = (e: React.FormEvent) => {

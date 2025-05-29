@@ -14,7 +14,7 @@ export const OAuthCallback: React.FC = () => {
     const expiresIn = params.get('expires_in');
     
     if (accessToken && expiresIn) {
-      // Save the token and redirect back
+      // Save the token using the hook method
       handleAuthSuccess(accessToken, parseInt(expiresIn));
     } else {
       // Handle error
