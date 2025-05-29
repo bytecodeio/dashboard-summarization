@@ -6,6 +6,7 @@ import { loadUserSettings } from '../utils/loadUserSettings';
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
+  isAdmin: boolean;
 }
 
 interface Setting {
@@ -15,57 +16,7 @@ interface Setting {
   description: string;
 }
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
-  const { core40SDK, extensionSDK } = useContext(ExtensionContext);
-  const extensionId = extensionSDK?.lookerHostData?.extensionId;
-  // Convert model_application to lowercase for use in attribute names
-  const model_application = extensionId?.replace(/::/g, '_').replace(/-/g, '_').toLowerCase();
-
-  // Settings state
-  const [settings, setSettings] = useState<Record<string, Setting>>({
-    vertex_project: {
-      id: 'vertex_project',
-      name: 'Vertex AI Project',
-      value: '',
-      description: 'Google Cloud Project ID where Vertex AI is enabled'
-    },
-    vertex_location: {
-      id: 'vertex_location',
-      name: 'Vertex AI Location',
-      value: 'us-central1',
-      description: 'Google Cloud region where Vertex AI is deployed (e.g., us-central1)'
-    },
-    vertex_model: {
-      id: 'vertex_model',
-      name: 'Vertex AI Model',
-      value: 'gemini-1.5-flash',
-      description: 'Vertex AI model to use for generating content'
-    },
-    google_oauth_client_id: {
-      id: 'google_oauth_client_id',
-      name: 'Google OAuth Client ID',
-      value: '',
-      description: 'OAuth client ID from Google Cloud Console'
-    }
-  });
-
-import React, { useContext, useEffect, useState } from 'react';
-import { ExtensionContext } from '@looker/extension-sdk-react';
-import { useAutoOAuth } from '../utils/useAutoOAuth';
-
-interface SettingsModalProps {
-  open: boolean;
-  onClose: () => void;
-}
-
-interface Setting {
-  id: string;
-  name: string;
-  value: string;
-  description: string;
-}
-
-const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin }) => {
   const { core40SDK, extensionSDK } = useContext(ExtensionContext);
   const extensionId = extensionSDK?.lookerHostData?.extensionId;
   // Convert model_application to lowercase for use in attribute names
@@ -102,7 +53,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   const [userAttributes, setUserAttributes] = useState<{ id: string | undefined, name: string, value?: string }[]>([]);
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
   const [vertexTestResult, setVertexTestResult] = useState<boolean | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
 
   // Use our hook but don't auto-authenticate
   const { initiateAuth, oauthToken } = useAutoOAuth(false);
@@ -168,11 +118,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   useEffect(() => {
     if (open) {
       loadUserAttributeValues();
-      testVertexSettings();
+      // testVertexSettings(); // Test settings might rely on OAuth token which might not be ready
     }
-  }, [core40SDK, open]);
+  }, [core40SDK, open]); // Removed dependency on settings.google_oauth_client_id.value
 
-  // Check admin status
+  // Check admin status - REMOVED, isAdmin is now a prop
+  /*
   useEffect(() => {
     const checkAdminStatus = async () => {
       try {
@@ -185,6 +136,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
     };
     checkAdminStatus();
   }, [core40SDK]);
+  */
 
   // Handle saving settings to user attributes
   const handleSaveSetting = async (id: string, value: string) => {
@@ -338,7 +290,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   };
 
   if (!open) return null;
-  if (!isAdmin) return <div>Settings are only available to administrators</div>;
+  // Use the isAdmin prop to control rendering
+  if (!isAdmin) {
+    return (
+      <div className="settings-modal-overlay">
+        <div className="settings-modal">
+          <h2>Dashboard Summarization Settings</h2>
+          <button className="close-button" onClick={onClose}>×</button>
+          <p>Settings are only available to administrators or users with specific permissions.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-modal-overlay">

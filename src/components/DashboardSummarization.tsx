@@ -38,7 +38,7 @@ import md5 from 'md5'
 import './Spinner.css' // Import custom spinner CSS
 import { generateFinalSummary } from '../utils/generateFinalSummary'
 import { useAutoOAuth } from '../utils/useAutoOAuth'
-// import SettingsModal from './SettingsModal'
+import SettingsModal from './SettingsModal'
 
 export const DashboardSummarization: React.FC = () => {
   const { extensionSDK, tileHostData, core40SDK, lookerHostData } = useContext(ExtensionContext) as ExtensionContextData
@@ -49,6 +49,7 @@ export const DashboardSummarization: React.FC = () => {
   const [temporaryPrompt, setTemporaryPrompt] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false); // Add loading state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   
   // Use refs to track initialization state and prevent duplicate calls
   const initializationRef = useRef<{ 
@@ -63,6 +64,22 @@ export const DashboardSummarization: React.FC = () => {
   
   // Use the OAuth hook with auto-check enabled but more safely now
   const { isAuthenticating, oauthToken, initiateAuth } = useAutoOAuth(true);
+
+  // Check admin status
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        // More robust permission checking should be done here if available
+        // For now, successfully fetching 'me' implies sufficient rights to see settings
+        await core40SDK.ok(core40SDK.me());
+        setIsAdmin(true); 
+      } catch (error) {
+        console.error('Error checking admin status or insufficient permissions:', error);
+        setIsAdmin(false);
+      }
+    };
+    checkAdminStatus();
+  }, [core40SDK]);
 
   // Initialize dashboard based on tile data
   const initializeDashboard = useCallback(async () => {
@@ -255,7 +272,8 @@ export const DashboardSummarization: React.FC = () => {
           </form>
         )}
         
-        <button 
+        {isAdmin ? (
+          <button 
           onClick={() => setIsSettingsOpen(true)} 
           style={{ 
             marginLeft: dashboardMetadata.prompt ? 'auto' : '1rem',
@@ -265,7 +283,7 @@ export const DashboardSummarization: React.FC = () => {
           }}
         >
           ⚙️ Settings
-        </button>
+        </button>) : null}
       </div>
       
       {isLoading ? (
