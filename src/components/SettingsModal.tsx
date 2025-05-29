@@ -22,30 +22,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
   // Convert model_application to lowercase for use in attribute names
   const model_application = extensionId?.replace(/::/g, '_').replace(/-/g, '_').toLowerCase();
 
+  // Default settings values
+  const defaultSettingValues: Record<string, string> = {
+    vertex_project: '',
+    vertex_location: 'us-central1',
+    vertex_model: 'gemini-1.5-flash',
+    google_oauth_client_id: ''
+  };
+
   // Settings state
   const [settings, setSettings] = useState<Record<string, Setting>>({
     vertex_project: {
       id: 'vertex_project',
       name: 'Vertex AI Project',
-      value: '',
+      value: defaultSettingValues.vertex_project,
       description: 'Google Cloud Project ID where Vertex AI is enabled'
     },
     vertex_location: {
       id: 'vertex_location',
       name: 'Vertex AI Location',
-      value: 'us-central1',
+      value: defaultSettingValues.vertex_location,
       description: 'Google Cloud region where Vertex AI is deployed (e.g., us-central1)'
     },
     vertex_model: {
       id: 'vertex_model',
       name: 'Vertex AI Model',
-      value: 'gemini-1.5-flash',
+      value: defaultSettingValues.vertex_model,
       description: 'Vertex AI model to use for generating content'
     },
     google_oauth_client_id: {
       id: 'google_oauth_client_id',
       name: 'Google OAuth Client ID',
-      value: '',
+      value: defaultSettingValues.google_oauth_client_id,
       description: 'OAuth client ID from Google Cloud Console'
     }
   });
@@ -64,20 +72,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       const userId = user.id;
       
       if (userId) {
-        const userAttrs = await core40SDK.ok(
+        const userAttrsSDK = await core40SDK.ok(
           core40SDK.user_attribute_user_values({
             user_id: userId,
-            fields: "name, value",
+            fields: "name, value, user_attribute_id", // Ensure user_attribute_id is fetched
             all_values: true
           })
         );
         
-        // Update settings from user attributes
         const updatedSettings = { ...settings };
         
         Object.keys(settings).forEach(key => {
           const attrName = `${model_application}_${key}`.toLowerCase();
-          const attr = userAttrs.find((attr: any) => 
+          const attr = userAttrsSDK.find((attr: any) => 
             attr.name.toLowerCase() === attrName.toLowerCase()
           );
           
@@ -86,14 +93,36 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
               ...updatedSettings[key],
               value: attr.value
             };
+          } else {
+            const defaultValue = defaultSettingValues[key];
+            if (defaultValue !== undefined) {
+              updatedSettings[key].value = defaultValue;
+            } else {
+              updatedSettings[key].value = '';
+            }
           }
         });
         
         setSettings(updatedSettings);
-        setUserAttributes(userAttrs);
+        // Map SDK response to the structure expected by userAttributes state
+        const mappedUserAttrs = userAttrsSDK.map(attr => ({
+          id: attr.user_attribute_id, // Map user_attribute_id to id
+          name: attr.name,
+          value: attr.value
+        }));
+        setUserAttributes(mappedUserAttrs);
       }
     } catch (error) {
       console.error('Error loading user settings:', error);
+      // When loading fails, set settings state to defaults
+      const defaultState = { ...settings };
+      Object.keys(defaultSettingValues).forEach(key => {
+        defaultState[key] = {
+          ...defaultState[key],
+          value: defaultSettingValues[key]
+        };
+      });
+      setSettings(defaultState);
     }
   };
 
@@ -118,9 +147,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
   useEffect(() => {
     if (open) {
       loadUserAttributeValues();
-      // testVertexSettings(); // Test settings might rely on OAuth token which might not be ready
+      // Optionally, initiate OAuth if no token is found when the modal opens
+      // and the client ID is available.
+      // Check oauthToken from the hook directly instead of localStorage
+      if (!oauthToken && settings.google_oauth_client_id.value) {
+        console.log('Modal opened, no token in hook state, and client ID is set. Initiating OAuth flow.');
+        initiateAuth();
+      }
     }
-  }, [core40SDK, open]); // Removed dependency on settings.google_oauth_client_id.value
+  }, [open, core40SDK, settings.google_oauth_client_id.value, initiateAuth, loadUserAttributeValues, oauthToken]); // Added oauthToken to dependencies
 
   // Check admin status - REMOVED, isAdmin is now a prop
   /*
@@ -149,7 +184,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       }
     }));
     
-    // Ensure the user attribute name is lowercase
     const prefixedId = `${model_application}_${id}`.toLowerCase();
     
     try {
@@ -161,7 +195,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
         return;
       }
       
-      // Case-insensitive lookup for existing attribute
       const userAttribute = userAttributes.find(
         (attr) => attr.name.toLowerCase() === prefixedId
       );
@@ -169,18 +202,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       console.log('userAttribute:', userAttribute, 'for name:', prefixedId);
       
       if (userAttribute && userAttribute.id) {
+        // Corrected SDK call: user_attribute_id, user_id, body
         await core40SDK.ok(
-          core40SDK.set_user_attribute_user_value(userAttribute.id, {
-            user_id: userId,
-            value
-          })
+          core40SDK.set_user_attribute_user_value(userAttribute.id, userId, { value })
         );
       } else {
-        // Create user attribute if it doesn't exist
         const newUserAttribute = await core40SDK.ok(
           core40SDK.create_user_attribute({
             name: prefixedId.toLowerCase(),
-            label: prefixedId,
+            label: prefixedId, // Consider a more user-friendly label
             type: 'string',
             default_value: value,
             value_is_hidden: false,
@@ -189,17 +219,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
           })
         );
         
-        // Set the value for the current user
         if (newUserAttribute.id) {
+          // Corrected SDK call: user_attribute_id, user_id, body
           await core40SDK.ok(
-            core40SDK.set_user_attribute_user_value(newUserAttribute.id, {
-              user_id: userId,
-              value
-            })
+            core40SDK.set_user_attribute_user_value(newUserAttribute.id, userId, { value })
           );
+          // Add the new attribute to the local state, ensuring correct mapping
+          setUserAttributes([...userAttributes, { 
+            id: newUserAttribute.id, 
+            name: newUserAttribute.name || prefixedId, // Use name from response if available
+            value: value 
+          }]);
         }
-        
-        setUserAttributes([...userAttributes, { id: newUserAttribute.id, name: prefixedId }]);
       }
     } catch (error) {
       console.error('Error saving user attribute:', error);
@@ -211,30 +242,36 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
     try {
       setVertexTestResult(null);
       
-      if (!oauthToken) {
-        console.error('No OAuth token available');
+      // Use oauthToken directly from the useAutoOAuth hook
+      const tokenToUse = oauthToken; 
+      console.log('Token from useAutoOAuth state (for test):', tokenToUse);
+
+      // Get settings from component state
+      const project = settings.vertex_project.value || defaultSettingValues.vertex_project;
+      const location = settings.vertex_location.value || defaultSettingValues.vertex_location;
+      const model = settings.vertex_model.value || defaultSettingValues.vertex_model;
+
+      console.log('Vertex Settings for API call: Project:', project, 'Location:', location, 'Model:', model);
+
+      if (!tokenToUse) {
+        console.error('No OAuth token available from hook for testVertexSettings');
         setVertexTestResult(false);
         return false;
       }
       
-      const project = settings.vertex_project.value;
-      const location = settings.vertex_location.value;
-      const model = settings.vertex_model.value;
-      
       if (!project || !location || !model) {
-        console.error('Vertex settings are incomplete');
+        console.error('Vertex settings (project, location, model) are incomplete in state for testVertexSettings');
         setVertexTestResult(false);
         return false;
       }
       
       const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
       
-      // Make a simple request to test access
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${oauthToken}`
+          'Authorization': `Bearer ${tokenToUse}`
         },
         body: JSON.stringify({
           contents: [{
@@ -265,27 +302,37 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
 
   // Reset all settings
   const handleReset = async () => {
-    const defaultSettings = {
-      vertex_project: '',
-      vertex_location: 'us-central1',
-      vertex_model: 'gemini-1.5-flash',
-      google_oauth_client_id: ''
-    };
-    
-    // Update local state
-    Object.entries(defaultSettings).forEach(([key, value]) => {
-      setSettings(prevSettings => ({
-        ...prevSettings,
-        [key]: {
-          ...prevSettings[key],
-          value
-        }
-      }));
+    const newSettingsState = { ...settings };
+    Object.entries(defaultSettingValues).forEach(([key, value]) => {
+      newSettingsState[key] = {
+        ...settings[key],
+        value: value
+      };
     });
+    setSettings(newSettingsState);
     
-    // Update user attributes
-    for (const [key, value] of Object.entries(defaultSettings)) {
-      await handleSaveSetting(key, String(value));
+    for (const [key, value] of Object.entries(defaultSettingValues)) {
+      const prefixedId = `${model_application}_${key}`.toLowerCase();
+      try {
+        const user = await core40SDK.ok(core40SDK.me());
+        const userId = user.id;
+        if (!userId) continue;
+
+        const userAttribute = userAttributes.find(
+          (attr) => attr.name.toLowerCase() === prefixedId
+        );
+
+        if (userAttribute && userAttribute.id) {
+          // Corrected SDK call: user_attribute_id, user_id, body
+          await core40SDK.ok(
+            core40SDK.set_user_attribute_user_value(userAttribute.id, userId, { value })
+          );
+        } else {
+          console.warn(`User attribute ${prefixedId} not found for reset, cannot set user-specific value to default.`);
+        }
+      } catch (error) {
+        console.error(`Error resetting user attribute ${prefixedId}:`, error);
+      }
     }
   };
 

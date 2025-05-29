@@ -8,20 +8,24 @@ export const generateArbitraryResponse = async (
     prompt: string,
     sharedContext: Object,
     additionalData: Object,
+    oauthToken?: string, // Accept token directly
+    vertexSettings?: { // Accept settings directly
+        vertexProject?: string,
+        vertexLocation?: string,
+        vertexModel?: string
+    }
 ): Promise<Object> => {
-    // Get the OAuth token from localStorage
-    const oauthToken = localStorage.getItem('vertex_oauth_token');
-    
+    // Check if token was provided
     if (!oauthToken) {
         console.error('OAuth token is missing. Please authenticate first.');
         setFormattedData('Error: Authentication required. Please reload the page to login with Google.');
         return { error: 'Authentication required' };
     }
 
-    // Get Vertex AI settings from localStorage or use defaults
-    const VERTEX_PROJECT = localStorage.getItem('vertex_project') || 'your-default-project';
-    const VERTEX_LOCATION = localStorage.getItem('vertex_location') || 'us-central1';
-    const VERTEX_MODEL = localStorage.getItem('vertex_model') || 'gemini-1.5-flash';
+    // Use provided settings or defaults
+    const VERTEX_PROJECT = vertexSettings?.vertexProject || 'your-default-project';
+    const VERTEX_LOCATION = vertexSettings?.vertexLocation || 'us-central1';
+    const VERTEX_MODEL = vertexSettings?.vertexModel || 'gemini-1.5-flash';
     
     const endpoint = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`;
     

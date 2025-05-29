@@ -47,10 +47,13 @@ export const DashboardSummarization: React.FC = () => {
   const [prompt, setPrompt] = useState<string | null>(null)
   const { data, setData, formattedData, setFormattedData, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
   const [temporaryPrompt, setTemporaryPrompt] = useState<string>('')
-  const [isLoading, setIsLoading] = useState(false); // Add loading state
+  const [isLoading, setIsLoading] = useState(false); 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(true); // Temporarily set to true
+  const [isAdmin, setIsAdmin] = useState(false); 
   
+  const [queryResults, setQueryResults] = useState<any[] | null>(null);
+  const [marketInfo, setMarketInfo] = useState<{ data: any, dashboard: DashboardMetadata | null }>({ data: {}, dashboard: null });
+
   // Use refs to track initialization state and prevent duplicate calls
   const initializationRef = useRef<{ 
     dashboardId: string | null, 
@@ -76,172 +79,207 @@ export const DashboardSummarization: React.FC = () => {
         console.log('Admin status set to true');
       } catch (error) {
         console.error('Error checking admin status or insufficient permissions:', error);
-        // setIsAdmin(false);
-        setIsAdmin(true)
+        setIsAdmin(false);
         console.log('Admin status set to false due to error or insufficient permissions');
       }
     };
     checkAdminStatus();
   }, [core40SDK]);
 
-  // Initialize dashboard based on tile data
-  const initializeDashboard = useCallback(async () => {
-    // Don't proceed with initialization if we're authenticating
-    if (isAuthenticating) {
-      console.log('OAuth authentication in progress, delaying dashboard initialization');
+  // Step 1: Fetch essential dashboard and query data
+  const fetchEssentialData = useCallback(async () => {
+    if (!tileDashboardId) {
+      console.log('fetchEssentialData: No tileDashboardId, skipping.');
       return;
     }
-    
-    // Create a unique identifier for this dashboard + filters combination
+    // Don't proceed if we're authenticating (relevant if auth affects data fetching ability)
+    // if (isAuthenticating) {
+    //   console.log('fetchEssentialData: OAuth authentication in progress, delaying data fetching');
+    //   return;
+    // }
+
     const filterHash = JSON.stringify(tileDashboardFilters || {});
-    const currentState = `${tileDashboardId}:${filterHash}`;
-    
-    // Check if we're already initializing or have already initialized this exact configuration
+
     if (initializationRef.current.isInitializing) {
-      console.log('Dashboard initialization already in progress, skipping');
+      console.log('fetchEssentialData: Already initializing, skipping.');
       return;
     }
-    
-    if (initializationRef.current.dashboardId === tileDashboardId && 
-        initializationRef.current.filterHash === filterHash && 
+
+    if (initializationRef.current.dashboardId === tileDashboardId &&
+        initializationRef.current.filterHash === filterHash &&
         initializationRef.current.hasInitialized) {
-      console.log('Dashboard already initialized for this configuration, skipping');
+      console.log('fetchEssentialData: Data already fetched for this configuration, skipping.');
       return;
     }
-    
-    // Mark as initializing
+
     initializationRef.current.isInitializing = true;
-    initializationRef.current.dashboardId = tileDashboardId || null;
+    initializationRef.current.dashboardId = tileDashboardId;
     initializationRef.current.filterHash = filterHash;
-    
-    console.log('Starting dashboard initialization for ID:', tileDashboardId);
-    
-    const dashboardFilters = tileDashboardFilters || {}
-    let newDashboardMetadata: DashboardMetadata | null = null
-    let loadFromContext = false
+    console.log('fetchEssentialData: Starting data fetch for ID:', tileDashboardId);
+    setIsLoading(true);
 
-    if (tileDashboardId) {
-      const dashboardDetails = await fetchDashboardDetails(tileDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
-      const { description, queries, prompt } = dashboardDetails;
-      setDashboardMetadata({ dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt });
-      newDashboardMetadata = { dashboardFilters, dashboardId: tileDashboardId, queries, description, prompt };
-    }
-    
-    const marketDashboardId = newDashboardMetadata && newDashboardMetadata.description ? newDashboardMetadata.description.split('Dashboard:')[1] : '';
-    let marketDashboard: DashboardMetadata | null = null;
-    let marketData: any = {};
-    
-    if (marketDashboardId) {
-      setIsLoading(true); // Set loading state to true
-      marketDashboard = await fetchDashboardDetails(marketDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
-      if (marketDashboard && marketDashboard.queries.length > 0) marketData = await fetchQueryData(marketDashboard.queries, core40SDK);
-    }
-
-    if (newDashboardMetadata && newDashboardMetadata.queries.length > 0) {
-      // Check if we're already fetching data for these queries to prevent duplicates
-      const queryKey = JSON.stringify(newDashboardMetadata.queries.map(q => q.queryBody));
-      
-      let results;
-      if (queryFetchRef.current.has(queryKey)) {
-        console.log('Query data fetch already in progress, waiting for completion...');
-        results = await queryFetchRef.current.get(queryKey);
-      } else {
-        console.log('Starting new query data fetch...');
-        const fetchPromise = fetchQueryData(newDashboardMetadata.queries, core40SDK);
-        queryFetchRef.current.set(queryKey, fetchPromise);
-        
-        try {
-          results = await fetchPromise;
-        } finally {
-          queryFetchRef.current.delete(queryKey);
-        }
+    try {
+      const currentDashboardFilters = tileDashboardFilters || {};
+      const details = await fetchDashboardDetails(tileDashboardId, core40SDK, extensionSDK, currentDashboardFilters, tileHostData);
+      const currentDashboardMetadata: DashboardMetadata = { 
+        dashboardFilters: currentDashboardFilters, 
+        dashboardId: tileDashboardId, 
+        queries: details.queries, 
+        description: details.description, 
+        prompt: details.prompt 
+      };
+      setDashboardMetadata(currentDashboardMetadata);
+      if (!prompt && details.prompt) { // Set initial prompt from dashboard if not already set by user
+        setPrompt(details.prompt);
       }
 
-      if (results.length > 0 && (newDashboardMetadata?.prompt || prompt)) {
-        try {
-          setIsLoading(true); // Set loading state to true
-          
-          // Check if we have a token before proceeding
-          if (!oauthToken) {
-            setIsLoading(false);
-            initializationRef.current.isInitializing = false;
-            console.log('No OAuth token available, cannot generate content');
-            return;
+      // Fetch market data if applicable
+      const marketDashboardId = details.description ? details.description.split('Dashboard:')[1] : '';
+      let fetchedMarketData: any = {};
+      let fetchedMarketDashboard: DashboardMetadata | null = null;
+      if (marketDashboardId) {
+        fetchedMarketDashboard = await fetchDashboardDetails(marketDashboardId, core40SDK, extensionSDK, currentDashboardFilters, tileHostData);
+        if (fetchedMarketDashboard && fetchedMarketDashboard.queries.length > 0) {
+          fetchedMarketData = await fetchQueryData(fetchedMarketDashboard.queries, core40SDK);
+        }
+      }
+      setMarketInfo({ data: fetchedMarketData, dashboard: fetchedMarketDashboard });
+
+      // Fetch main query data
+      if (currentDashboardMetadata.queries.length > 0) {
+        const queryKey = JSON.stringify(currentDashboardMetadata.queries.map(q => q.queryBody));
+        let results;
+        if (queryFetchRef.current.has(queryKey)) {
+          results = await queryFetchRef.current.get(queryKey);
+        } else {
+          const fetchPromise = fetchQueryData(currentDashboardMetadata.queries, core40SDK);
+          queryFetchRef.current.set(queryKey, fetchPromise);
+          try {
+            results = await fetchPromise;
+          } finally {
+            queryFetchRef.current.delete(queryKey);
           }
-          
-          const newSummary = await generateArbitraryResponse(
-            results, 
-            extensionSDK, 
-            '', // No restful service needed anymore 
-            setFormattedData, 
-            newDashboardMetadata?.prompt || prompt || '', 
-            newDashboardMetadata, 
-            marketData || {}
-          )
-          setIsLoading(false); // Set loading state to false
-        } catch (error) {
-          setIsLoading(false); // Set loading state to false in case of error
-          initializationRef.current.isInitializing = false;
-          console.error('Error generating summaries and suggestions:', error);
-          return;
         }
-      }
-    } else if (newDashboardMetadata) {
-      setIsLoading(true); // Set loading state to true
-      
-      // Same here - just check for token
-      if (!oauthToken) {
-        setIsLoading(false);
-        initializationRef.current.isInitializing = false;
-        return;
+        setQueryResults(results);
+      } else {
+        setQueryResults([]); // No queries, set to empty array
       }
       
-      const newSummary = await generateArbitraryResponse(
-        [], 
-        extensionSDK, 
-        '', // No restful service needed anymore
-        setFormattedData, 
-        newDashboardMetadata?.prompt || prompt || '', 
-        newDashboardMetadata, 
-        marketData || {}
-      )
-      setIsLoading(false); // Set loading state to false
+      initializationRef.current.hasInitialized = true;
+      console.log('fetchEssentialData: Data fetching completed for ID:', tileDashboardId);
+    } catch (error) {
+      console.error('fetchEssentialData: Error fetching data:', error);
+      // Potentially set error state here
+    } finally {
+      initializationRef.current.isInitializing = false;
+      // setIsLoading(false); // Loading will be handled by generation effect or if no generation needed
     }
-    
-    // Mark as completed
-    initializationRef.current.isInitializing = false;
-    initializationRef.current.hasInitialized = true;
-    console.log('Dashboard initialization completed for ID:', tileDashboardId);
-  }, [tileDashboardId, extensionSDK, core40SDK, prompt, setFormattedData, tileDashboardFilters, tileHostData, oauthToken, isAuthenticating]);
+  }, [tileDashboardId, core40SDK, extensionSDK, tileDashboardFilters, tileHostData, prompt]); // Added prompt here to ensure initial prompt from dashboard is considered
 
-  // This useEffect only runs when the dashboard ID changes or OAuth completes
+  // useEffect for fetching data
   useEffect(() => {
-    // Reset initialization state when dashboard ID or filters change
     const filterHash = JSON.stringify(tileDashboardFilters || {});
-    if (initializationRef.current.dashboardId !== tileDashboardId || 
+    if (initializationRef.current.dashboardId !== tileDashboardId ||
         initializationRef.current.filterHash !== filterHash) {
-      console.log('Dashboard ID or filters changed, resetting initialization state');
+      console.log('Dashboard ID or filters changed, resetting initialization state for data fetching.');
       initializationRef.current.hasInitialized = false;
       initializationRef.current.isInitializing = false;
+      initializationRef.current.dashboardId = null;
       initializationRef.current.filterHash = null;
-      // Clear any pending query fetches
       queryFetchRef.current.clear();
+      setQueryResults(null); // Clear previous results
+      setMarketInfo({ data: {}, dashboard: null }); // Clear market info
+      setFormattedData(''); // Clear old summary
+    }
+
+    if (tileDashboardId) {
+      fetchEssentialData();
+    }
+  }, [tileDashboardId, tileDashboardFilters, fetchEssentialData]);
+
+
+  // Step 2: useEffect for generating summaries when data or prompt changes
+  useEffect(() => {
+    const effectivePrompt = prompt || dashboardMetadata.prompt;
+
+    if (!effectivePrompt) {
+      console.log('generateSummaryEffect: No prompt available, skipping generation.');
+      if (initializationRef.current.hasInitialized && !initializationRef.current.isInitializing) {
+         setIsLoading(false); // Stop loading if data is fetched but no prompt
+      }
+      return;
+    }
+
+    if (isAuthenticating) {
+      console.log('generateSummaryEffect: OAuth authentication in progress, delaying generation.');
+      return;
+    }
+
+    if (!oauthToken) {
+      console.log('generateSummaryEffect: No OAuth token, skipping generation.');
+      // Potentially set a message for the user to authenticate/reload
+      setFormattedData("Error: Authentication required. Please ensure you are logged in with Google, or try reloading. If the issue persists, check settings.");
+      setIsLoading(false);
+      return;
+    }
+
+    // Ensure queryResults are loaded (can be an empty array if no queries)
+    // and dashboardMetadata is available (even if queries array is empty)
+    if (queryResults === null && dashboardMetadata.queries.length > 0) {
+        console.log('generateSummaryEffect: Query results not yet available, skipping generation.');
+        return;
     }
     
-    // Only run initialization when we have a dashboard ID, not authenticating, and have an OAuth token
-    if (tileDashboardId && !isAuthenticating && oauthToken) {
-      initializeDashboard();
+    // If there are no queries, queryResults will be an empty array.
+    // dashboardMetadata should always be available if fetchEssentialData ran.
+    if (!dashboardMetadata.dashboardId) {
+        console.log('generateSummaryEffect: Dashboard metadata not yet available, skipping generation.');
+        return;
     }
-  }, [tileDashboardId, tileDashboardFilters, isAuthenticating, oauthToken, initializeDashboard]);
+
+    console.log('generateSummaryEffect: Attempting to generate summary. Effective prompt:', effectivePrompt);
+    setIsLoading(true);
+
+    // Get Vertex settings - still using localStorage temporarily until context is fully implemented
+    const vertexSettings = {
+      vertexProject: localStorage.getItem('vertex_project') || '',
+      vertexLocation: localStorage.getItem('vertex_location') || 'us-central1',
+      vertexModel: localStorage.getItem('vertex_model') || 'gemini-1.5-flash'
+    };
+
+    const generationData = queryResults || []; // Use empty array if queryResults is null but dashboard has no queries
+
+    generateArbitraryResponse(
+      generationData,
+      extensionSDK,
+      '', // No restful service
+      setFormattedData,
+      effectivePrompt,
+      dashboardMetadata,
+      marketInfo.data || {},
+      oauthToken, // Pass the OAuth token from useAutoOAuth hook
+      vertexSettings // Pass vertex settings
+    ).then(() => {
+      console.log('generateSummaryEffect: Summary generation completed.');
+    }).catch(error => {
+      console.error('generateSummaryEffect: Error generating summary:', error);
+      setFormattedData(`Error generating summary: ${error.message}`);
+    }).finally(() => {
+      setIsLoading(false);
+    });
+
+  }, [queryResults, dashboardMetadata, prompt, marketInfo, oauthToken, isAuthenticating, extensionSDK, setFormattedData]);
+
 
   const handlePromptSubmit = (e: React.FormEvent) => {
+    console.log('Prompt submitted:', temporaryPrompt);
     e.preventDefault();
     setDashboardMetadata((prev: DashboardMetadata) => ({ ...prev, prompt: temporaryPrompt }));
     setPrompt(temporaryPrompt);
     setTemporaryPrompt('');
   };
 
-  console.log('Rendering DashboardSummarization, isAdmin:', isAdmin, 'isSettingsOpen:', isSettingsOpen);
+  console.log('Rendering DashboardSummarization, isAdmin:', isAdmin, 'isSettingsOpen:', isSettingsOpen, 'current prompt state:', prompt);
 
   return (
     <div className="dashboard-summarization">
