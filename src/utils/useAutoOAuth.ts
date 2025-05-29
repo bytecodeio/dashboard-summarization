@@ -12,6 +12,8 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
   const authAttemptedRef = useRef<boolean>(false);
   // Track if settings have been loaded
   const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
+  // Track if SDK is ready
+  const [sdkReady, setSdkReady] = useState<boolean>(false);
   // Store client ID in state rather than localStorage
   const [clientId, setClientId] = useState<string | null>(null);
   // Store pre-auth URL in state
@@ -50,6 +52,11 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
       return;
     }
 
+    if (!sdkReady) {
+      console.log('SDK not ready yet, cannot initiate OAuth');
+      return;
+    }
+
     if (!clientId) {
       console.error('Google OAuth client ID is missing. Please configure it in settings.');
       return;
@@ -63,7 +70,7 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
     setPreAuthUrl(window.location.href);
     
     try {
-      console.log('Starting OAuth authentication flow...');
+      console.log('Starting OAuth authentication flow with client ID:', clientId.substring(0, 10) + '...');
       // Use extension SDK's OAuth capabilities
       const response = await extensionSDK.oauth2Authenticate(
         'https://accounts.google.com/o/oauth2/v2/auth',
@@ -76,9 +83,10 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
       
       const { access_token, expires_in } = response;
       if (access_token && expires_in) {
+        console.log('OAuth authentication successful');
         handleAuthSuccess(access_token, expires_in);
       } else {
-        console.error('Failed to get access token');
+        console.error('Failed to get access token from OAuth response');
         setIsAuthenticating(false);
         // Reset auth attempted flag on failure so it can be tried again
         authAttemptedRef.current = false;
@@ -89,12 +97,23 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
       // Reset auth attempted flag on failure so it can be tried again
       authAttemptedRef.current = false;
     }
-  }, [extensionSDK, handleAuthSuccess, isAuthenticating, clientId]);
+  }, [extensionSDK, handleAuthSuccess, isAuthenticating, clientId, sdkReady]);
 
-  // Load settings first, then check authentication status
+  // Check if SDK is ready and load settings
   useEffect(() => {
-    const loadSettingsAndCheckAuth = async () => {
+    const checkSDKAndLoadSettings = async () => {
+      // Check if SDK is ready by verifying we have core40SDK and extensionSDK
+      if (!core40SDK || !extensionSDK) {
+        console.log('SDK not yet available, waiting...');
+        return;
+      }
+      
       try {
+        // Test SDK readiness by making a simple API call
+        await core40SDK.ok(core40SDK.me());
+        setSdkReady(true);
+        console.log('SDK is ready');
+        
         // Get settings from user attributes, not localStorage
         const extensionId = extensionSDK?.lookerHostData?.extensionId;
         if (extensionId) {
@@ -123,18 +142,22 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
           }
         }
       } catch (error) {
-        console.error('Error loading settings:', error);
+        console.error('Error checking SDK readiness or loading settings:', error);
+        setSdkReady(false);
       }
       
       setSettingsLoaded(true);
     };
     
-    loadSettingsAndCheckAuth();
+    checkSDKAndLoadSettings();
   }, [core40SDK, extensionSDK]);
 
-  // Once settings are loaded, decide if we need to authenticate
+  // Once settings are loaded and SDK is ready, decide if we need to authenticate
   useEffect(() => {
-    if (!settingsLoaded) return;
+    if (!settingsLoaded || !sdkReady) {
+      console.log(`Waiting for prerequisites - settingsLoaded: ${settingsLoaded}, sdkReady: ${sdkReady}`);
+      return;
+    }
     
     const checkAndAuthenticate = async () => {
       // Check if token exists and is valid
@@ -152,7 +175,7 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
       // 1. triggerAuth is true and we haven't attempted yet, OR
       // 2. We have a clientId and no valid token and haven't attempted yet
       if (!authAttemptedRef.current && triggerAuth && clientId) {
-        console.log('Triggering OAuth authentication...');
+        console.log('Triggering OAuth authentication (trigger mode)...');
         await initiateAuth();
       } else if (!authAttemptedRef.current && clientId && !isTokenValid()) {
         console.log('No valid token found, triggering OAuth authentication...');
@@ -163,7 +186,7 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
     };
     
     checkAndAuthenticate();
-  }, [settingsLoaded, triggerAuth, isTokenValid, initiateAuth, clientId]);
+  }, [settingsLoaded, sdkReady, triggerAuth, isTokenValid, initiateAuth, clientId]);
 
-  return { isAuthenticating, oauthToken, initiateAuth, handleAuthSuccess, clientId };
+  return { isAuthenticating, oauthToken, initiateAuth, handleAuthSuccess, clientId, sdkReady, settingsLoaded };
 };

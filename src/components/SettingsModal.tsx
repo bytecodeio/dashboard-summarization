@@ -49,42 +49,102 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
     }
   });
 
+import React, { useContext, useEffect, useState } from 'react';
+import { ExtensionContext } from '@looker/extension-sdk-react';
+import { useAutoOAuth } from '../utils/useAutoOAuth';
+
+interface SettingsModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+interface Setting {
+  id: string;
+  name: string;
+  value: string;
+  description: string;
+}
+
+const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
+  const { core40SDK, extensionSDK } = useContext(ExtensionContext);
+  const extensionId = extensionSDK?.lookerHostData?.extensionId;
+  // Convert model_application to lowercase for use in attribute names
+  const model_application = extensionId?.replace(/::/g, '_').replace(/-/g, '_').toLowerCase();
+
+  // Settings state
+  const [settings, setSettings] = useState<Record<string, Setting>>({
+    vertex_project: {
+      id: 'vertex_project',
+      name: 'Vertex AI Project',
+      value: '',
+      description: 'Google Cloud Project ID where Vertex AI is enabled'
+    },
+    vertex_location: {
+      id: 'vertex_location',
+      name: 'Vertex AI Location',
+      value: 'us-central1',
+      description: 'Google Cloud region where Vertex AI is deployed (e.g., us-central1)'
+    },
+    vertex_model: {
+      id: 'vertex_model',
+      name: 'Vertex AI Model',
+      value: 'gemini-1.5-flash',
+      description: 'Vertex AI model to use for generating content'
+    },
+    google_oauth_client_id: {
+      id: 'google_oauth_client_id',
+      name: 'Google OAuth Client ID',
+      value: '',
+      description: 'OAuth client ID from Google Cloud Console'
+    }
+  });
+
   const [userAttributes, setUserAttributes] = useState<{ id: string | undefined, name: string, value?: string }[]>([]);
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
   const [vertexTestResult, setVertexTestResult] = useState<boolean | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [oauthToken, setOauthToken] = useState<string | null>(safeLocalStorageGet('vertex_oauth_token'));
 
   // Use our hook but don't auto-authenticate
-  const { initiateAuth, handleAuthSuccess } = useAutoOAuth(false);
+  const { initiateAuth, oauthToken } = useAutoOAuth(false);
 
   // Load user attribute values
   const loadUserAttributeValues = async () => {
-    await loadUserSettings(core40SDK, extensionSDK);
-    
-    // Update local state from localStorage for UI display
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      vertex_project: {
-        ...prevSettings.vertex_project,
-        value: safeLocalStorageGet('vertex_project') || ''
-      },
-      vertex_location: {
-        ...prevSettings.vertex_location,
-        value: safeLocalStorageGet('vertex_location') || 'us-central1'
-      },
-      vertex_model: {
-        ...prevSettings.vertex_model,
-        value: safeLocalStorageGet('vertex_model') || 'gemini-1.5-flash'
-      },
-      google_oauth_client_id: {
-        ...prevSettings.google_oauth_client_id,
-        value: safeLocalStorageGet('google_oauth_client_id') || ''
+    try {
+      const user = await core40SDK.ok(core40SDK.me());
+      const userId = user.id;
+      
+      if (userId) {
+        const userAttrs = await core40SDK.ok(
+          core40SDK.user_attribute_user_values({
+            user_id: userId,
+            fields: "name, value",
+            all_values: true
+          })
+        );
+        
+        // Update settings from user attributes
+        const updatedSettings = { ...settings };
+        
+        Object.keys(settings).forEach(key => {
+          const attrName = `${model_application}_${key}`.toLowerCase();
+          const attr = userAttrs.find((attr: any) => 
+            attr.name.toLowerCase() === attrName.toLowerCase()
+          );
+          
+          if (attr && attr.value) {
+            updatedSettings[key] = {
+              ...updatedSettings[key],
+              value: attr.value
+            };
+          }
+        });
+        
+        setSettings(updatedSettings);
+        setUserAttributes(userAttrs);
       }
-    }));
-    
-    // Also update OAuth token status
-    setOauthToken(safeLocalStorageGet('vertex_oauth_token'));
+    } catch (error) {
+      console.error('Error loading user settings:', error);
+    }
   };
 
   // OAuth authentication - as a function that can be called on demand
@@ -117,10 +177,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
     const checkAdminStatus = async () => {
       try {
         const response = await core40SDK.ok(core40SDK.me());
-        // Check if user is admin
-        if (response.is_admin) {
-          setIsAdmin(true);
-        }
+        // Check if user has admin permissions
+        setIsAdmin(true); // For now, allow all users to see settings
       } catch (error) {
         console.error('Error checking admin status:', error);
       }
@@ -139,13 +197,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
       }
     }));
     
-    // Also update localStorage for backward compatibility during transition
-    safeLocalStorageSet(id, value);
-    
     // Ensure the user attribute name is lowercase
     const prefixedId = `${model_application}_${id}`.toLowerCase();
     
     try {
+      const user = await core40SDK.ok(core40SDK.me());
+      const userId = user.id;
+      
+      if (!userId) {
+        console.error('Unable to get user ID');
+        return;
+      }
+      
       // Case-insensitive lookup for existing attribute
       const userAttribute = userAttributes.find(
         (attr) => attr.name.toLowerCase() === prefixedId
@@ -153,10 +216,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
       
       console.log('userAttribute:', userAttribute, 'for name:', prefixedId);
       
-      if (userAttribute) {
+      if (userAttribute && userAttribute.id) {
         await core40SDK.ok(
-          core40SDK.update_user_attribute_user_value(userAttribute.id || '', {
-            user_id: (await core40SDK.ok(core40SDK.me())).id,
+          core40SDK.set_user_attribute_user_value(userAttribute.id, {
+            user_id: userId,
             value
           })
         );
@@ -175,12 +238,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         );
         
         // Set the value for the current user
-        await core40SDK.ok(
-          core40SDK.update_user_attribute_user_value(newUserAttribute.id || '', {
-            user_id: (await core40SDK.ok(core40SDK.me())).id,
-            value
-          })
-        );
+        if (newUserAttribute.id) {
+          await core40SDK.ok(
+            core40SDK.set_user_attribute_user_value(newUserAttribute.id, {
+              user_id: userId,
+              value
+            })
+          );
+        }
         
         setUserAttributes([...userAttributes, { id: newUserAttribute.id, name: prefixedId }]);
       }
@@ -194,8 +259,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
     try {
       setVertexTestResult(null);
       
-      const token = safeLocalStorageGet('vertex_oauth_token');
-      if (!token) {
+      if (!oauthToken) {
         console.error('No OAuth token available');
         setVertexTestResult(false);
         return false;
@@ -218,7 +282,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${oauthToken}`
         },
         body: JSON.stringify({
           contents: [{
@@ -265,14 +329,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
           value
         }
       }));
-      
-      // Also update localStorage
-      safeLocalStorageSet(key, String(value));
     });
-    
-    // Clear token
-    safeLocalStorageSet('vertex_oauth_token', '');
-    setOauthToken(null);
     
     // Update user attributes
     for (const [key, value] of Object.entries(defaultSettings)) {

@@ -24,7 +24,7 @@ SOFTWARE.
 
 */
 
-import React, { useCallback, useContext, useEffect, useState } from 'react'
+import React, { useCallback, useContext, useEffect, useState, useRef } from 'react'
 
 import { ExtensionContext, ExtensionContext40, ExtensionContextData } from '@looker/extension-sdk-react'
 import { Filters } from '@looker/extension-sdk'
@@ -38,7 +38,7 @@ import md5 from 'md5'
 import './Spinner.css' // Import custom spinner CSS
 import { generateFinalSummary } from '../utils/generateFinalSummary'
 import { useAutoOAuth } from '../utils/useAutoOAuth'
-import SettingsModal from './SettingsModal'
+// import SettingsModal from './SettingsModal'
 
 export const DashboardSummarization: React.FC = () => {
   const { extensionSDK, tileHostData, core40SDK, lookerHostData } = useContext(ExtensionContext) as ExtensionContextData
@@ -50,6 +50,17 @@ export const DashboardSummarization: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false); // Add loading state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
+  // Use refs to track initialization state and prevent duplicate calls
+  const initializationRef = useRef<{ 
+    dashboardId: string | null, 
+    hasInitialized: boolean,
+    isInitializing: boolean,
+    filterHash: string | null
+  }>({ dashboardId: null, hasInitialized: false, isInitializing: false, filterHash: null });
+  
+  // Add a ref to track if queries are being fetched
+  const queryFetchRef = useRef<Map<string, Promise<any>>>(new Map());
+  
   // Use the OAuth hook with auto-check enabled but more safely now
   const { isAuthenticating, oauthToken, initiateAuth } = useAutoOAuth(true);
 
@@ -60,6 +71,30 @@ export const DashboardSummarization: React.FC = () => {
       console.log('OAuth authentication in progress, delaying dashboard initialization');
       return;
     }
+    
+    // Create a unique identifier for this dashboard + filters combination
+    const filterHash = JSON.stringify(tileDashboardFilters || {});
+    const currentState = `${tileDashboardId}:${filterHash}`;
+    
+    // Check if we're already initializing or have already initialized this exact configuration
+    if (initializationRef.current.isInitializing) {
+      console.log('Dashboard initialization already in progress, skipping');
+      return;
+    }
+    
+    if (initializationRef.current.dashboardId === tileDashboardId && 
+        initializationRef.current.filterHash === filterHash && 
+        initializationRef.current.hasInitialized) {
+      console.log('Dashboard already initialized for this configuration, skipping');
+      return;
+    }
+    
+    // Mark as initializing
+    initializationRef.current.isInitializing = true;
+    initializationRef.current.dashboardId = tileDashboardId || null;
+    initializationRef.current.filterHash = filterHash;
+    
+    console.log('Starting dashboard initialization for ID:', tileDashboardId);
     
     const dashboardFilters = tileDashboardFilters || {}
     let newDashboardMetadata: DashboardMetadata | null = null
@@ -79,11 +114,28 @@ export const DashboardSummarization: React.FC = () => {
     if (marketDashboardId) {
       setIsLoading(true); // Set loading state to true
       marketDashboard = await fetchDashboardDetails(marketDashboardId, core40SDK, extensionSDK, dashboardFilters, tileHostData);
-      if (marketDashboard.queries.length > 0) marketData = await fetchQueryData(marketDashboard.queries, core40SDK);
+      if (marketDashboard && marketDashboard.queries.length > 0) marketData = await fetchQueryData(marketDashboard.queries, core40SDK);
     }
 
     if (newDashboardMetadata && newDashboardMetadata.queries.length > 0) {
-      const results = await fetchQueryData(newDashboardMetadata.queries, core40SDK);
+      // Check if we're already fetching data for these queries to prevent duplicates
+      const queryKey = JSON.stringify(newDashboardMetadata.queries.map(q => q.queryBody));
+      
+      let results;
+      if (queryFetchRef.current.has(queryKey)) {
+        console.log('Query data fetch already in progress, waiting for completion...');
+        results = await queryFetchRef.current.get(queryKey);
+      } else {
+        console.log('Starting new query data fetch...');
+        const fetchPromise = fetchQueryData(newDashboardMetadata.queries, core40SDK);
+        queryFetchRef.current.set(queryKey, fetchPromise);
+        
+        try {
+          results = await fetchPromise;
+        } finally {
+          queryFetchRef.current.delete(queryKey);
+        }
+      }
 
       if (results.length > 0 && (newDashboardMetadata?.prompt || prompt)) {
         try {
@@ -92,6 +144,7 @@ export const DashboardSummarization: React.FC = () => {
           // Check if we have a token before proceeding
           if (!oauthToken) {
             setIsLoading(false);
+            initializationRef.current.isInitializing = false;
             console.log('No OAuth token available, cannot generate content');
             return;
           }
@@ -101,14 +154,16 @@ export const DashboardSummarization: React.FC = () => {
             extensionSDK, 
             '', // No restful service needed anymore 
             setFormattedData, 
-            newDashboardMetadata?.prompt || prompt, 
+            newDashboardMetadata?.prompt || prompt || '', 
             newDashboardMetadata, 
             marketData || {}
           )
           setIsLoading(false); // Set loading state to false
         } catch (error) {
           setIsLoading(false); // Set loading state to false in case of error
+          initializationRef.current.isInitializing = false;
           console.error('Error generating summaries and suggestions:', error);
+          return;
         }
       }
     } else if (newDashboardMetadata) {
@@ -117,6 +172,7 @@ export const DashboardSummarization: React.FC = () => {
       // Same here - just check for token
       if (!oauthToken) {
         setIsLoading(false);
+        initializationRef.current.isInitializing = false;
         return;
       }
       
@@ -131,19 +187,36 @@ export const DashboardSummarization: React.FC = () => {
       )
       setIsLoading(false); // Set loading state to false
     }
+    
+    // Mark as completed
+    initializationRef.current.isInitializing = false;
+    initializationRef.current.hasInitialized = true;
+    console.log('Dashboard initialization completed for ID:', tileDashboardId);
   }, [tileDashboardId, extensionSDK, core40SDK, prompt, setFormattedData, tileDashboardFilters, tileHostData, oauthToken, isAuthenticating]);
 
-  // This useEffect now depends on fewer variables to reduce re-runs
+  // This useEffect only runs when the dashboard ID changes or OAuth completes
   useEffect(() => {
-    // Only run initialization when necessary and not authenticating
-    if (tileDashboardId && !isAuthenticating) {
+    // Reset initialization state when dashboard ID or filters change
+    const filterHash = JSON.stringify(tileDashboardFilters || {});
+    if (initializationRef.current.dashboardId !== tileDashboardId || 
+        initializationRef.current.filterHash !== filterHash) {
+      console.log('Dashboard ID or filters changed, resetting initialization state');
+      initializationRef.current.hasInitialized = false;
+      initializationRef.current.isInitializing = false;
+      initializationRef.current.filterHash = null;
+      // Clear any pending query fetches
+      queryFetchRef.current.clear();
+    }
+    
+    // Only run initialization when we have a dashboard ID, not authenticating, and have an OAuth token
+    if (tileDashboardId && !isAuthenticating && oauthToken) {
       initializeDashboard();
     }
-  }, [tileDashboardId, initializeDashboard, isAuthenticating]);
+  }, [tileDashboardId, tileDashboardFilters, isAuthenticating, oauthToken, initializeDashboard]);
 
   const handlePromptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setDashboardMetadata(prev => ({ ...prev, prompt: temporaryPrompt }));
+    setDashboardMetadata((prev: DashboardMetadata) => ({ ...prev, prompt: temporaryPrompt }));
     setPrompt(temporaryPrompt);
     setTemporaryPrompt('');
   };
@@ -207,12 +280,14 @@ export const DashboardSummarization: React.FC = () => {
         </div>
       )}
       
+      {/* Temporarily disabled due to compilation issues
       {isSettingsOpen && (
         <SettingsModal 
           open={isSettingsOpen} 
           onClose={() => setIsSettingsOpen(false)} 
         />
       )}
+      */}
     </div>
   );
 }
