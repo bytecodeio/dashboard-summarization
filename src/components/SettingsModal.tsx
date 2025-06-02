@@ -199,14 +199,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
         const prefixedId = `${model_application}_${id}`.toLowerCase();
         const value = setting.value;
         
-        const user = await core40SDK.ok(core40SDK.me());
-        const userId = user.id;
-        
-        if (!userId) {
-          console.error('Unable to get user ID');
-          continue;
-        }
-        
         // First check if the user attribute exists
         let userAttributeId;
         
@@ -242,11 +234,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
         // If user attribute exists, update it
         if (userAttributeId) {
           try {
-            console.log(`Updating existing user attribute: ${prefixedId} (ID: ${userAttributeId}) for user ${userId} with value: ${value}`);
+            console.log(`Updating existing user attribute: ${prefixedId} (ID: ${userAttributeId}) with default value: ${value}`);
             
-            // Use the correct SDK method for updating user attribute values
+            // Use update_user_attribute to update the global default instead of user-specific value
             await core40SDK.ok(
-              core40SDK.set_user_attribute_user_value(userAttributeId, userId, { value })
+              core40SDK.update_user_attribute(
+                userAttributeId, 
+                {
+                  name: prefixedId.toLowerCase(),
+                  label: setting.name,
+                  type: 'string',
+                  default_value: value
+                }
+              )
             );
           } catch (error) {
             console.error(`Error updating user attribute ${prefixedId}:`, error);
@@ -269,12 +269,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
             );
             
             if (newUserAttribute.id) {
-              console.log(`Setting value for new user attribute: ${prefixedId} (ID: ${newUserAttribute.id}) for user ${userId} with value: ${value}`);
-              
-              // Use the correct SDK method for the new attribute
-              await core40SDK.ok(
-                core40SDK.set_user_attribute_user_value(newUserAttribute.id, userId, { value })
-              );
+              console.log(`Created new user attribute: ${prefixedId} (ID: ${newUserAttribute.id}) with default value: ${value}`);
               
               // Add the new attribute to the local state
               setUserAttributes(prev => [...prev, { 
