@@ -27,7 +27,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
   const defaultSettingValues: Record<string, string> = {
     vertex_project: '',
     vertex_location: 'us-central1',
-    vertex_model: 'gemini-1.5-flash',
+    vertex_model: 'gemini-2.0-flash',
     google_oauth_client_id: ''
   };
 
@@ -224,7 +224,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
               userAttributeId = foundAttribute.id;
               // Update local state
               setUserAttributes(prev => [...prev.filter(a => a.name.toLowerCase() !== prefixedId.toLowerCase()), 
-                { id: foundAttribute.id, name: foundAttribute.name, value }]);
+                { id: foundAttribute.id, name: foundAttribute.name || prefixedId, value }]);
             }
           } catch (error) {
             console.error(`Error finding user attribute ${prefixedId}:`, error);
@@ -248,9 +248,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
                 }
               )
             );
+            
+            try {
+              // Update local state
+              setUserAttributes(prev => prev.map(attr => 
+                attr.id === userAttributeId 
+                  ? { ...attr, value } 
+                  : attr
+              ));
+            } catch (stateError) {
+              console.error(`Error updating local state for attribute ${prefixedId}:`, stateError);
+              // Continue execution even if state update fails
+            }
           } catch (error) {
             console.error(`Error updating user attribute ${prefixedId}:`, error);
-            throw error; // Rethrow to trigger the outer catch block
+            // Log error but continue with the next setting instead of halting the entire process
           }
         } else {
           // Create a new user attribute if it doesn't exist
@@ -271,16 +283,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
             if (newUserAttribute.id) {
               console.log(`Created new user attribute: ${prefixedId} (ID: ${newUserAttribute.id}) with default value: ${value}`);
               
-              // Add the new attribute to the local state
-              setUserAttributes(prev => [...prev, { 
-                id: newUserAttribute.id, 
-                name: newUserAttribute.name || prefixedId,
-                value: value 
-              }]);
+              try {
+                // Add the new attribute to the local state
+                setUserAttributes(prev => [...prev, { 
+                  id: newUserAttribute.id, 
+                  name: newUserAttribute.name || prefixedId,
+                  value: value 
+                }]);
+              } catch (stateError) {
+                console.error(`Error updating state for attribute ${prefixedId}:`, stateError);
+                // Continue execution even if state update fails
+              }
             }
-          } catch (error) {
-            console.error(`Error creating user attribute ${prefixedId}:`, error);
-            throw error; // Rethrow to trigger the outer catch block
+          } catch (attributeError) {
+            console.error(`Error creating user attribute ${prefixedId}:`, attributeError);
+            // Log error but continue with the next setting instead of halting the entire process
           }
         }
       }
@@ -360,52 +377,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
   // Handle expanding settings description
   const handleExpandClick = (id: string) => {
     setExpandedSetting(expandedSetting === id ? null : id);
-  };
-
-  // Reset all settings
-  const handleReset = async () => {
-    // Reset form values using refs
-    Object.entries(defaultSettingValues).forEach(([key, value]) => {
-      if (inputRefs.current[key]) {
-        inputRefs.current[key]!.value = value;
-      }
-    });
-    
-    // Reset settings state
-    const newSettingsState = { ...settings };
-    Object.entries(defaultSettingValues).forEach(([key, value]) => {
-      newSettingsState[key] = {
-        ...settings[key],
-        value: value
-      };
-    });
-    
-    setSettings(newSettingsState);
-    
-    // Save defaults to user attributes
-    for (const [key, value] of Object.entries(defaultSettingValues)) {
-      const prefixedId = `${model_application}_${key}`.toLowerCase();
-      try {
-        const user = await core40SDK.ok(core40SDK.me());
-        const userId = user.id;
-        if (!userId) continue;
-
-        const userAttribute = userAttributes.find(
-          (attr) => attr.name.toLowerCase() === prefixedId
-        );
-
-        if (userAttribute && userAttribute.id) {
-          // Corrected SDK call: user_attribute_id, user_id, body
-          await core40SDK.ok(
-            core40SDK.set_user_attribute_user_value(userAttribute.id, userId, { value })
-          );
-        } else {
-          console.warn(`User attribute ${prefixedId} not found for reset, cannot set user-specific value to default.`);
-        }
-      } catch (error) {
-        console.error(`Error resetting user attribute ${prefixedId}:`, error);
-      }
-    }
   };
 
   if (!open) return null;
@@ -502,7 +473,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
           <div className="settings-buttons">
             <button onClick={handleSaveAllSettings} className="save-button">Save Settings</button>
             <button onClick={testVertexSettings} className="test-button">Test Settings</button>
-            <button onClick={handleReset} className="reset-button">Reset All Settings</button>
           </div>
         </div>
       </div>
