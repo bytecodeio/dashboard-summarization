@@ -2,7 +2,6 @@ import React, { useContext, useEffect, useState, useRef, useCallback } from 'rea
 import { ExtensionContext } from '@looker/extension-sdk-react';
 import { useAutoOAuth } from '../utils/useAutoOAuth';
 import { useSettings } from '../contexts/SettingsContext';
-import { testVertexSettings as testVertexSettingsUtil } from '../utils/vertexUtils';
 
 interface SettingsModalProps {
   open: boolean;
@@ -19,50 +18,18 @@ interface Setting {
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin }) => {
   const { core40SDK, extensionSDK } = useContext(ExtensionContext);
-  const extensionId = extensionSDK?.lookerHostData?.extensionId;
-  // Convert model_application to lowercase for use in attribute names
-  const model_application = extensionId?.replace(/::/g, '_').replace(/-/g, '_').toLowerCase();
-
-  // Default settings values
-  const defaultSettingValues: Record<string, string> = {
-    vertex_project: '',
-    vertex_location: 'us-central1',
-    vertex_model: 'gemini-2.0-flash',
-    google_oauth_client_id: ''
-  };
-
-  // Settings state
-  const [settings, setSettings] = useState<Record<string, Setting>>({
-    vertex_project: {
-      id: 'vertex_project',
-      name: 'Vertex AI Project',
-      value: defaultSettingValues.vertex_project,
-      description: 'Google Cloud Project ID where Vertex AI is enabled'
-    },
-    vertex_location: {
-      id: 'vertex_location',
-      name: 'Vertex AI Location',
-      value: defaultSettingValues.vertex_location,
-      description: 'Google Cloud region where Vertex AI is deployed (e.g., us-central1)'
-    },
-    vertex_model: {
-      id: 'vertex_model',
-      name: 'Vertex AI Model',
-      value: defaultSettingValues.vertex_model,
-      description: 'Vertex AI model to use for generating content'
-    },
-    google_oauth_client_id: {
-      id: 'google_oauth_client_id',
-      name: 'Google OAuth Client ID',
-      value: defaultSettingValues.google_oauth_client_id,
-      description: 'OAuth client ID from Google Cloud Console'
-    }
+  const { settings: contextSettings, saveSettings, isLoading } = useSettings();
+  
+  // Remove all the user attribute management code and replace with:
+  const [localSettings, setLocalSettings] = useState({
+    vertex_project: contextSettings.vertexProject,
+    vertex_location: contextSettings.vertexLocation,
+    vertex_model: contextSettings.vertexModel,
+    google_oauth_client_id: contextSettings.googleOAuthClientId,
   });
 
-  const [userAttributes, setUserAttributes] = useState<{ id: string | undefined, name: string, value?: string }[]>([]);
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
   const [vertexTestResult, setVertexTestResult] = useState<boolean | null>(null);
-  // State to show success message
   const [saveSuccess, setSaveSuccess] = useState<boolean | null>(null);
 
   // Use our hook but don't auto-authenticate
@@ -71,83 +38,31 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
   // Create refs for uncontrolled inputs
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  // Load user attribute values
-  const loadUserAttributeValues = useCallback(async () => {
-    try {
-      const user = await core40SDK.ok(core40SDK.me());
-      const userId = user.id;
-      
-      if (userId) {
-        const userAttrsSDK = await core40SDK.ok(
-          core40SDK.user_attribute_user_values({
-            user_id: userId,
-            fields: "name, value, user_attribute_id", // Ensure user_attribute_id is fetched
-            all_values: true
-          })
-        );
-        
-        const updatedSettings = { ...settings };
-        
-        Object.keys(settings).forEach(key => {
-          const attrName = `${model_application}_${key}`.toLowerCase();
-          const attr = userAttrsSDK.find((attr: any) => 
-            attr.name.toLowerCase() === attrName.toLowerCase()
-          );
-          
-          if (attr && attr.value) {
-            updatedSettings[key] = {
-              ...updatedSettings[key],
-              value: attr.value
-            };
-            // Set initial value in the ref if it exists
-            if (inputRefs.current[key]) {
-              inputRefs.current[key]!.value = attr.value;
-            }
-          } else {
-            const defaultValue = defaultSettingValues[key];
-            if (defaultValue !== undefined) {
-              updatedSettings[key].value = defaultValue;
-              // Set default value in the ref if it exists
-              if (inputRefs.current[key]) {
-                inputRefs.current[key]!.value = defaultValue;
-              }
-            } else {
-              updatedSettings[key].value = '';
-              // Clear the ref if it exists
-              if (inputRefs.current[key]) {
-                inputRefs.current[key]!.value = '';
-              }
-            }
-          }
-        });
-        
-        setSettings(updatedSettings);
-        
-        // Map SDK response to the structure expected by userAttributes state
-        const mappedUserAttrs = userAttrsSDK.map(attr => ({
-          id: attr.user_attribute_id, // Map user_attribute_id to id
-          name: attr.name,
-          value: attr.value
-        }));
-        setUserAttributes(mappedUserAttrs);
-      }
-    } catch (error) {
-      console.error('Error loading user settings:', error);
-      // When loading fails, set settings state to defaults
-      const defaultState = { ...settings };
-      Object.keys(defaultSettingValues).forEach(key => {
-        defaultState[key] = {
-          ...defaultState[key],
-          value: defaultSettingValues[key]
-        };
-        // Set default value in the ref if it exists
-        if (inputRefs.current[key]) {
-          inputRefs.current[key]!.value = defaultSettingValues[key];
-        }
+  // Update local settings when context settings change
+  useEffect(() => {
+    if (open) {
+      setLocalSettings({
+        vertex_project: contextSettings.vertexProject,
+        vertex_location: contextSettings.vertexLocation,
+        vertex_model: contextSettings.vertexModel,
+        google_oauth_client_id: contextSettings.googleOAuthClientId,
       });
-      setSettings(defaultState);
+      
+      // Update input refs with current values
+      if (inputRefs.current.vertex_project) {
+        inputRefs.current.vertex_project.value = contextSettings.vertexProject;
+      }
+      if (inputRefs.current.vertex_location) {
+        inputRefs.current.vertex_location.value = contextSettings.vertexLocation;
+      }
+      if (inputRefs.current.vertex_model) {
+        inputRefs.current.vertex_model.value = contextSettings.vertexModel;
+      }
+      if (inputRefs.current.google_oauth_client_id) {
+        inputRefs.current.google_oauth_client_id.value = contextSettings.googleOAuthClientId;
+      }
     }
-  }, [core40SDK, model_application]);
+  }, [open, contextSettings]);
 
   // OAuth authentication - as a function that can be called on demand
   const doOAuth = async () => {
@@ -167,147 +82,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
     }
   };
 
-  // Load user attributes and their values when the modal opens
-  useEffect(() => {
-    if (open) {
-      loadUserAttributeValues();
-      // Optionally, initiate OAuth if no token is found when the modal opens
-      // and the client ID is available.
-      const clientId = inputRefs.current.google_oauth_client_id?.value;
-      if (!oauthToken && clientId) {
-        console.log('Modal opened, no token in hook state, and client ID is set. Initiating OAuth flow.');
-        initiateAuth();
-      }
-    }
-  }, [open, initiateAuth, loadUserAttributeValues, oauthToken]); // Remove core40SDK and settings dependency
-
   // Handle saving all settings to user attributes
   const handleSaveAllSettings = async () => {
     setSaveSuccess(null);
     try {
       // Get values from refs
-      const updatedSettings = { ...settings };
-      Object.keys(updatedSettings).forEach((key) => {
-        if (inputRefs.current[key]) {
-          updatedSettings[key].value = inputRefs.current[key]?.value || '';
-        }
-      });
-      setSettings(updatedSettings);
+      const updatedSettings = {
+        vertexProject: inputRefs.current.vertex_project?.value || '',
+        vertexLocation: inputRefs.current.vertex_location?.value || 'us-central1',
+        vertexModel: inputRefs.current.vertex_model?.value || 'gemini-2.0-flash',
+        googleOAuthClientId: inputRefs.current.google_oauth_client_id?.value || '',
+      };
       
-      // Then save to user attributes
-      for (const [id, setting] of Object.entries(updatedSettings)) {
-        const prefixedId = `${model_application}_${id}`.toLowerCase();
-        const value = setting.value;
-        
-        // First check if the user attribute exists
-        let userAttributeId;
-        
-        // Find in local state first
-        const existingAttribute = userAttributes.find(
-          (attr) => attr.name.toLowerCase() === prefixedId.toLowerCase()
-        );
-        
-        if (existingAttribute && existingAttribute.id) {
-          userAttributeId = existingAttribute.id;
-        } else {
-          // If not found in local state, try to find it in the system
-          try {
-            const allUserAttributes = await core40SDK.ok(
-              core40SDK.all_user_attributes({fields: "id,name"})
-            );
-            
-            const foundAttribute = allUserAttributes.find(
-              (attr: any) => attr.name.toLowerCase() === prefixedId.toLowerCase()
-            );
-            
-            if (foundAttribute) {
-              userAttributeId = foundAttribute.id;
-              // Update local state
-              setUserAttributes(prev => [...prev.filter(a => a.name.toLowerCase() !== prefixedId.toLowerCase()), 
-                { id: foundAttribute.id, name: foundAttribute.name || prefixedId, value }]);
-            }
-          } catch (error) {
-            console.error(`Error finding user attribute ${prefixedId}:`, error);
-          }
-        }
-        
-        // If user attribute exists, update it
-        if (userAttributeId) {
-          try {
-            console.log(`Updating existing user attribute: ${prefixedId} (ID: ${userAttributeId}) with default value: ${value}`);
-            
-            // Use update_user_attribute to update the global default instead of user-specific value
-            await core40SDK.ok(
-              core40SDK.update_user_attribute(
-                userAttributeId, 
-                {
-                  name: prefixedId.toLowerCase(),
-                  label: setting.name,
-                  type: 'string',
-                  default_value: value
-                }
-              )
-            );
-            
-            try {
-              // Update local state
-              setUserAttributes(prev => prev.map(attr => 
-                attr.id === userAttributeId 
-                  ? { ...attr, value } 
-                  : attr
-              ));
-            } catch (stateError) {
-              console.error(`Error updating local state for attribute ${prefixedId}:`, stateError);
-              // Continue execution even if state update fails
-            }
-          } catch (error) {
-            console.error(`Error updating user attribute ${prefixedId}:`, error);
-            // Log error but continue with the next setting instead of halting the entire process
-          }
-        } else {
-          // Create a new user attribute if it doesn't exist
-          try {
-            console.log(`Creating new user attribute: ${prefixedId}`);
-            const newUserAttribute = await core40SDK.ok(
-              core40SDK.create_user_attribute({
-                name: prefixedId.toLowerCase(),
-                label: setting.name, // Use a more user-friendly label
-                type: 'string',
-                default_value: value,
-                value_is_hidden: false,
-                user_can_view: true,
-                user_can_edit: true,
-              })
-            );
-            
-            if (newUserAttribute.id) {
-              console.log(`Created new user attribute: ${prefixedId} (ID: ${newUserAttribute.id}) with default value: ${value}`);
-              
-              try {
-                // Add the new attribute to the local state
-                setUserAttributes(prev => [...prev, { 
-                  id: newUserAttribute.id, 
-                  name: newUserAttribute.name || prefixedId,
-                  value: value 
-                }]);
-              } catch (stateError) {
-                console.error(`Error updating state for attribute ${prefixedId}:`, stateError);
-                // Continue execution even if state update fails
-              }
-            }
-          } catch (attributeError) {
-            console.error(`Error creating user attribute ${prefixedId}:`, attributeError);
-            // Log error but continue with the next setting instead of halting the entire process
-          }
-        }
-      }
+      // Save using the context (which will save to extension context)
+      await saveSettings(updatedSettings);
       
-      // Show success message
       setSaveSuccess(true);
       console.log("All settings saved successfully!");
       return true;
     } catch (error) {
-      console.error('Error saving user attributes:', error);
+      console.error('Error saving settings:', error);
       setSaveSuccess(false);
       return false;
     }
@@ -326,9 +120,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       console.log('Token from useAutoOAuth state (for test):', tokenToUse);
 
       // Get settings from refs
-      const project = inputRefs.current.vertex_project?.value || defaultSettingValues.vertex_project;
-      const location = inputRefs.current.vertex_location?.value || defaultSettingValues.vertex_location;
-      const model = inputRefs.current.vertex_model?.value || defaultSettingValues.vertex_model;
+      const project = inputRefs.current.vertex_project?.value || '';
+      const location = inputRefs.current.vertex_location?.value || 'us-central1';
+      const model = inputRefs.current.vertex_model?.value || 'gemini-2.0-flash';
 
       console.log('Vertex Settings for API call: Project:', project, 'Location:', location, 'Model:', model);
 
@@ -392,6 +186,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       </div>
     );
   }
+
+  // Update the settings object:
+  const settings = {
+    vertex_project: {
+      id: 'vertex_project',
+      name: 'Vertex AI Project',
+      value: localSettings.vertex_project,
+      description: 'Google Cloud Project ID where Vertex AI is enabled'
+    },
+    vertex_location: {
+      id: 'vertex_location',
+      name: 'Vertex AI Location',
+      value: localSettings.vertex_location,
+      description: 'Google Cloud region where Vertex AI is deployed (e.g., us-central1)'
+    },
+    vertex_model: {
+      id: 'vertex_model',
+      name: 'Vertex AI Model',
+      value: localSettings.vertex_model,
+      description: 'Vertex AI model to use for generating content'
+    },
+    google_oauth_client_id: {
+      id: 'google_oauth_client_id',
+      name: 'Google OAuth Client ID',
+      value: localSettings.google_oauth_client_id,
+      description: 'OAuth client ID from Google Cloud Console'
+    }
+  };
 
   return (
     <div className="settings-modal-overlay">

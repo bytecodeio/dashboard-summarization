@@ -1,8 +1,10 @@
 import { useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { ExtensionContext } from '@looker/extension-sdk-react';
+import { useSettings } from '../contexts/SettingsContext';
 
 export const useAutoOAuth = (triggerAuth: boolean = false) => {
   const { extensionSDK, core40SDK } = useContext(ExtensionContext);
+  const { settings } = useSettings(); // Use the settings context
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
   // Use state instead of localStorage for token storage
   const [oauthToken, setOauthToken] = useState<string | null>(null);
@@ -14,10 +16,11 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
   const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
   // Track if SDK is ready
   const [sdkReady, setSdkReady] = useState<boolean>(false);
-  // Store client ID in state rather than localStorage
-  const [clientId, setClientId] = useState<string | null>(null);
   // Store pre-auth URL in state
   const [preAuthUrl, setPreAuthUrl] = useState<string>('');
+
+  // Get client ID from settings context
+  const clientId = settings.googleOAuthClientId;
 
   // Check if token is valid
   const isTokenValid = useCallback(() => {
@@ -99,9 +102,9 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
     }
   }, [extensionSDK, handleAuthSuccess, isAuthenticating, clientId, sdkReady]);
 
-  // Check if SDK is ready and load settings
+  // Check if SDK is ready
   useEffect(() => {
-    const checkSDKAndLoadSettings = async () => {
+    const checkSDKReadiness = async () => {
       // Check if SDK is ready by verifying we have core40SDK and extensionSDK
       if (!core40SDK || !extensionSDK) {
         console.log('SDK not yet available, waiting...');
@@ -113,43 +116,15 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
         await core40SDK.ok(core40SDK.me());
         setSdkReady(true);
         console.log('SDK is ready');
-        
-        // Get settings from user attributes, not localStorage
-        const extensionId = extensionSDK?.lookerHostData?.extensionId;
-        if (extensionId) {
-          const model_application = extensionId.replace(/::/g, '_').replace(/-/g, '_').toLowerCase();
-          const attrName = `${model_application}_google_oauth_client_id`;
-          
-          const user = await core40SDK.ok(core40SDK.me());
-          const userId = user.id;
-          
-          if (userId) {
-            const userAttrs = await core40SDK.ok(
-              core40SDK.user_attribute_user_values({
-                user_id: userId,
-                fields: "name, value",
-                all_values: true
-              })
-            );
-            
-            const clientIdAttr = userAttrs.find((attr: any) => 
-              attr.name.toLowerCase() === attrName.toLowerCase()
-            );
-            
-            if (clientIdAttr && clientIdAttr.value) {
-              setClientId(clientIdAttr.value);
-            }
-          }
-        }
       } catch (error) {
-        console.error('Error checking SDK readiness or loading settings:', error);
+        console.error('Error checking SDK readiness:', error);
         setSdkReady(false);
       }
       
       setSettingsLoaded(true);
     };
     
-    checkSDKAndLoadSettings();
+    checkSDKReadiness();
   }, [core40SDK, extensionSDK]);
 
   // Once settings are loaded and SDK is ready, decide if we need to authenticate

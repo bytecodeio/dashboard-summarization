@@ -13,7 +13,7 @@ export interface SettingsContextProps {
 const defaultSettings: VertexSettings = {
   vertexProject: '',
   vertexLocation: 'us-central1',
-  vertexModel: 'gemini-1.5-flash',
+  vertexModel: 'gemini-2.0-flash',
   googleOAuthClientId: '',
 };
 
@@ -34,10 +34,46 @@ export const SettingsProvider: React.FC<{children: ReactNode}> = ({ children }) 
     const fetchSettings = async () => {
       try {
         setIsLoading(true);
-        const userSettings = await loadUserSettings(core40SDK, extensionSDK);
-        if (userSettings) {
-          setSettings(userSettings);
+        
+        // First, try to load from extension context
+        let contextSettings: VertexSettings | null = null;
+        try {
+          const contextData = extensionSDK.getContextData();
+          if (contextData && typeof contextData === 'object') {
+            // Validate that the context data has the expected structure
+            if ('vertexProject' in contextData || 'vertexLocation' in contextData || 
+                'vertexModel' in contextData || 'googleOAuthClientId' in contextData) {
+              contextSettings = {
+                vertexProject: contextData.vertexProject || defaultSettings.vertexProject,
+                vertexLocation: contextData.vertexLocation || defaultSettings.vertexLocation,
+                vertexModel: contextData.vertexModel || defaultSettings.vertexModel,
+                googleOAuthClientId: contextData.googleOAuthClientId || defaultSettings.googleOAuthClientId,
+              };
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load extension context data:', err);
         }
+
+        // If extension context has settings, use them
+        if (contextSettings) {
+          setSettings(contextSettings);
+        } else {
+          // Fallback to user attributes
+          const userSettings = await loadUserSettings(core40SDK, extensionSDK);
+          if (userSettings) {
+            setSettings(userSettings);
+            
+            // Migrate user attributes to extension context for future use
+            try {
+              await extensionSDK.saveContextData(userSettings);
+              console.log('Migrated user attributes to extension context');
+            } catch (err) {
+              console.warn('Failed to migrate settings to extension context:', err);
+            }
+          }
+        }
+        
         setError(null);
       } catch (err) {
         console.error('Error loading settings:', err);
@@ -47,81 +83,33 @@ export const SettingsProvider: React.FC<{children: ReactNode}> = ({ children }) 
       }
     };
 
-    fetchSettings();
+    if (extensionSDK) {
+      fetchSettings();
+    }
   }, [core40SDK, extensionSDK]);
 
   const saveSettings = async (newSettings: Partial<VertexSettings>) => {
     try {
       setIsLoading(true);
-      const extensionId = extensionSDK?.lookerHostData?.extensionId;
-      if (!extensionId) {
-        throw new Error('Extension ID not available');
-      }
       
-      // Convert model_application to lowercase for use in attribute names
-      const model_application = extensionId.replace(/::/g, '_').replace(/-/g, '_').toLowerCase();
+      // Merge new settings with existing settings
+      const updatedSettings = {
+        ...settings,
+        ...newSettings
+      };
       
-      // Get current user
-      const userId = (await core40SDK.ok(core40SDK.me())).id;
-
-      // Update each setting
-      for (const [key, value] of Object.entries(newSettings)) {
-        if (value === undefined) continue;
-
-        // Convert camelCase to snake_case for user attribute names
-        const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        const attributeName = `${model_application}_${snakeKey}`;
-        
-        // Find if attribute already exists
-        const userAttributes = await core40SDK.ok(
-          core40SDK.user_attribute_user_values({
-            user_id: userId,
-            fields: "name, value, user_attribute_id",
-            all_values: true
-          })
-        );
-        
-        const existingAttr = userAttributes.find((attr: any) => 
-          attr.name.toLowerCase() === attributeName.toLowerCase()
-        );
-        
-        if (existingAttr) {
-          // Update existing attribute
-          await core40SDK.ok(
-            core40SDK.update_user_attribute_user_value(existingAttr.user_attribute_id, {
-              user_id: userId,
-              value: String(value)
-            })
-          );
-        } else {
-          // Create new attribute
-          const newAttr = await core40SDK.ok(
-            core40SDK.create_user_attribute({
-              name: attributeName,
-              label: attributeName,
-              type: 'string',
-              value_is_hidden: false,
-              user_can_view: true,
-              user_can_edit: true,
-            })
-          );
-          
-          await core40SDK.ok(
-            core40SDK.update_user_attribute_user_value(newAttr.id, {
-              user_id: userId,
-              value: String(value)
-            })
-          );
-        }
+      // Save to extension context (primary storage)
+      try {
+        await extensionSDK.saveContextData(updatedSettings);
+      } catch (err) {
+        console.error('Failed to save to extension context:', err);
+        throw new Error('Failed to save settings to extension context');
       }
       
       // Update local settings
-      setSettings(prev => ({
-        ...prev,
-        ...newSettings
-      }));
-      
+      setSettings(updatedSettings);
       setError(null);
+      
     } catch (err) {
       console.error('Error saving settings:', err);
       setError('Failed to save settings');
