@@ -57,6 +57,10 @@ export const DashboardSummarization: React.FC = () => {
   // Get settings from context
   const { settings } = useSettings();
 
+   useEffect(() => {
+    extensionSDK.rendered()
+  }, [])
+
   // Use refs to track initialization state and prevent duplicate calls
   const initializationRef = useRef<{ 
     dashboardId: string | null, 
