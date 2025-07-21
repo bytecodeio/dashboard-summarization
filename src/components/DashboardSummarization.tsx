@@ -286,7 +286,7 @@ export const DashboardSummarization: React.FC = () => {
     setTemporaryPrompt('');
   };
 
-  console.log('Rendering DashboardSummarization, isAdmin:', isAdmin, 'isSettingsOpen:', isSettingsOpen, 'current prompt state:', prompt);
+  // console.log('Rendering DashboardSummarization, isAdmin:', isAdmin, 'isSettingsOpen:', isSettingsOpen, 'current prompt state:', prompt);
 
   return (
     <div className="dashboard-summarization">

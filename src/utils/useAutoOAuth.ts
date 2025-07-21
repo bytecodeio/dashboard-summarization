@@ -32,11 +32,11 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
   }, [oauthToken, tokenExpiry]);
 
   // Handle successful authentication
-  const handleAuthSuccess = useCallback((token: string, expiresIn: number) => {
+  const handleAuthSuccess = useCallback((token: string) => {
     setOauthToken(token);
     
     // Set expiry time (current time + expiry seconds)
-    const expiryTime = Date.now() + (expiresIn * 1000);
+    const expiryTime = Date.now() + (1000 * 1000);
     setTokenExpiry(expiryTime);
     
     setIsAuthenticating(false);
@@ -79,15 +79,16 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
         'https://accounts.google.com/o/oauth2/v2/auth',
         {
           client_id: clientId,
-          scope: 'https://www.googleapis.com/auth/cloud-platform',
-          response_type: 'token',
+          scope: 'openid email profile',
+          response_type: 'id_token',
+          nonce: Math.random().toString(36).substring(2, 15), // Required for ID token
         }
       );
       
-      const { access_token, expires_in } = response;
-      if (access_token && expires_in) {
+      const { id_token } = response;
+      if (id_token ) {
         console.log('OAuth authentication successful');
-        handleAuthSuccess(access_token, expires_in);
+        handleAuthSuccess(id_token);
       } else {
         console.error('Failed to get access token from OAuth response');
         setIsAuthenticating(false);

@@ -27,8 +27,8 @@ export const generateArbitraryResponse = async (
     const VERTEX_LOCATION = vertexSettings?.vertexLocation || 'us-central1';
     const VERTEX_MODEL = vertexSettings?.vertexModel || 'gemini-1.5-flash';
     
-    const endpoint = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`;
-    
+    // const endpoint = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`;
+    const endpoint = `https://looker-explore-assistant-mcp-dnhcuixsgq-uc.a.run.app/vertex-passthrough`;
     console.log('Sending request to Vertex AI:', endpoint);
     
     // Construct the content for Vertex AI
@@ -74,7 +74,7 @@ export const generateArbitraryResponse = async (
 
     try {
         // Make direct request to Vertex AI
-        const response = await fetch(endpoint, {
+        const response = await extensionSDK.fetchProxy(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -83,12 +83,25 @@ export const generateArbitraryResponse = async (
             body: JSON.stringify(requestBody)
         });
 
+        console.log('Response type:', typeof response);
+        console.log('Response object:', response);
+        console.log('Response methods:', Object.getOwnPropertyNames(response));
+
         if (!response.ok) {
             console.error('Vertex AI returned error:', response.status, response.statusText);
             throw new Error(`Vertex AI returned ${response.status}: ${response.statusText}`);
         }
+       
+        // Try different ways to get the data
+        let responseData;
+        if (typeof response.json === 'function') {
+            responseData = await response.json();
+        } else if (response.body) {
+            responseData = response.body;
+        } else {
+            responseData = response;
+        }
         
-        const responseData = await response.json();
         console.log('Vertex AI response:', responseData);
 
         // Extract the content from Vertex AI response
