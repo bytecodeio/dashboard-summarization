@@ -187,8 +187,7 @@ To enable direct authentication with Vertex AI, you need to set up OAuth credent
    - Authorized JavaScript origins:
      - Add your Looker instance URL (e.g., `https://your-looker-instance.cloud.looker.com`)
    - Authorized redirect URIs:
-     - Add your Looker instance URL followed by `/extensions/dashboard-summarization-extension/oauth-callback` 
-     - Example: `https://your-looker-instance.cloud.looker.com/extensions/dashboard-summarization-extension/oauth-callback`
+     - Add your Looker instance URL (e.g., `https://your-looker-instance.cloud.looker.com`)
    - Click "Create"
 
 5. **Copy the Client ID**

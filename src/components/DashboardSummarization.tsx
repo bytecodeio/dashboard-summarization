@@ -33,10 +33,9 @@ import { useSettings } from '../contexts/SettingsContext' // Import settings con
 import { fetchDashboardDetails } from '../utils/fetchDashboardDetails'
 import { DashboardMetadata, Query, QuerySummary, SummaryDataContextType } from '../types'
 import { fetchQueryData } from '../utils/fetchQueryData'
-import { generateArbitraryResponse } from '../utils/generateArbitraryResponse'
+import { useSendVertexMessage } from '../utils/useSendVertexMessage';
 import md5 from 'md5'
 import './Spinner.css' // Import custom spinner CSS
-import { generateFinalSummary } from '../utils/generateFinalSummary'
 import { useAutoOAuth } from '../utils/useAutoOAuth'
 import SettingsModal from './SettingsModal'
 
@@ -72,8 +71,11 @@ export const DashboardSummarization: React.FC = () => {
   // Add a ref to track if queries are being fetched
   const queryFetchRef = useRef<Map<string, Promise<any>>>(new Map());
   
-  // Use the OAuth hook with auto-check enabled but more safely now
-  const { isAuthenticating, oauthToken, initiateAuth } = useAutoOAuth(true);
+  // Use the OAuth hook but don't auto-trigger to avoid conflicts with useSendVertexMessage
+  const { isAuthenticating, idToken } = useAutoOAuth(false);
+
+  // Use the Vertex message hook for Cloud Run calls
+  const { callVertexAPI, isLoading: isVertexLoading } = useSendVertexMessage();
 
   // Check admin status
   useEffect(() => {
@@ -218,14 +220,14 @@ export const DashboardSummarization: React.FC = () => {
     }
 
     if (isAuthenticating) {
-      console.log('generateSummaryEffect: OAuth authentication in progress, delaying generation.');
+      console.log('generateSummaryEffect: Authentication in progress, delaying generation.');
       return;
     }
 
-    if (!oauthToken) {
-      console.log('generateSummaryEffect: No OAuth token, skipping generation.');
-      // Potentially set a message for the user to authenticate/reload
-      setFormattedData("Error: Authentication required. Please ensure you are logged in with Google, or try reloading. If the issue persists, check settings.");
+    // Check if Cloud Run URL is configured
+    if (!settings.cloudRunUrl) {
+      console.log('generateSummaryEffect: Cloud Run URL not configured, skipping generation.');
+      setFormattedData("Error: Cloud Run service URL not configured. Please check settings.");
       setIsLoading(false);
       return;
     }
@@ -249,33 +251,67 @@ export const DashboardSummarization: React.FC = () => {
 
     // Get Vertex settings from context
     const vertexSettings = {
-      vertexProject: settings.vertexProject,
-      vertexLocation: settings.vertexLocation,
-      vertexModel: settings.vertexModel
+      cloudRunUrl: settings.cloudRunUrl
     };
 
     const generationData = queryResults || []; // Use empty array if queryResults is null but dashboard has no queries
 
-    generateArbitraryResponse(
-      generationData,
-      extensionSDK,
-      '', // No restful service
-      setFormattedData,
-      effectivePrompt,
-      dashboardMetadata,
-      marketInfo.data || {},
-      oauthToken, // Pass the OAuth token from useAutoOAuth hook
-      vertexSettings // Pass vertex settings
-    ).then(() => {
+    // Format the full prompt with context
+    const contextData = {
+        prompt: effectivePrompt,
+        sharedContext: dashboardMetadata, 
+        newQuerySummaries: generationData, 
+        additionalData: marketInfo.data || {}
+    };
+    
+    // Format the full prompt for the model
+    const fullPrompt = `
+      You are an AI assistant analyzing dashboard data.
+      
+      Here is the dashboard context information:
+      ${JSON.stringify(dashboardMetadata, null, 2)}
+      
+      Here is the query data:
+      ${JSON.stringify(generationData, null, 2)}
+      
+      ${marketInfo.data ? `Additional context:\n${JSON.stringify(marketInfo.data, null, 2)}` : ''}
+      
+      User request: ${effectivePrompt}
+      
+      Provide a detailed analysis based on this information.
+    `;
+
+    // Use the Vertex API hook to call Cloud Run
+    callVertexAPI(fullPrompt, {
+      temperature: 0.2,
+      maxOutputTokens: 1024,
+      topP: 0.8,
+      topK: 40
+    }).then((response) => {
       console.log('generateSummaryEffect: Summary generation completed.');
-    }).catch(error => {
+      
+      // Extract the content from the response
+      if (response?.candidates && response.candidates.length > 0) {
+        const content = response.candidates[0].content;
+        
+        if (content && content.parts && content.parts.length > 0) {
+          const chatContent = content.parts[0].text;
+          setFormattedData(chatContent);
+        } else {
+          throw new Error('No valid content in response');
+        }
+      } else {
+        throw new Error('No valid response from Cloud Run');
+      }
+    }).catch((error: any) => {
       console.error('generateSummaryEffect: Error generating summary:', error);
-      setFormattedData(`Error generating summary: ${error.message}`);
+      const errorMessage = error?.message || 'Unknown error occurred';
+      setFormattedData(`Error generating summary: ${errorMessage}`);
     }).finally(() => {
       setIsLoading(false);
     });
 
-  }, [queryResults, dashboardMetadata, prompt, marketInfo, oauthToken, isAuthenticating, extensionSDK, setFormattedData, settings]);
+  }, [queryResults, dashboardMetadata, prompt, marketInfo, isAuthenticating, extensionSDK, setFormattedData, settings, callVertexAPI]);
 
 
   const handlePromptSubmit = (e: React.FormEvent) => {
@@ -340,7 +376,7 @@ export const DashboardSummarization: React.FC = () => {
         </button>) : null}
       </div>
       
-      {isLoading ? (
+      {(isLoading || isVertexLoading) ? (
         <div className="spinner-container">
           <div className="spinner"></div>
         </div>

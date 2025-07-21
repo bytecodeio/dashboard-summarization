@@ -41,10 +41,8 @@ export interface SafeStorage {
 }
 
 export interface VertexSettings {
-  vertexProject: string;
-  vertexLocation: string;
-  vertexModel: string;
   googleOAuthClientId: string;
+  cloudRunUrl?: string;
   storageType?: StorageType;
 }
 

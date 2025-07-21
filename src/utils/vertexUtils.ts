@@ -1,32 +1,28 @@
 /**
- * Utility functions for interacting with Vertex AI API
+ * Utility functions for interacting with Vertex AI API via Cloud Run
  */
 
 // Type definitions for Vertex settings
 export interface VertexSettings {
-  vertexProject: string;
-  vertexLocation: string;
-  vertexModel: string;
+  cloudRunUrl?: string;
 }
 
 // Default settings to use as fallbacks
 export const DEFAULT_VERTEX_SETTINGS: VertexSettings = {
-  vertexProject: '',
-  vertexLocation: 'us-central1',
-  vertexModel: 'gemini-1.5-flash'
+  cloudRunUrl: ''
 };
 
 /**
- * Make a request to the Vertex AI API
+ * Make a request to the Vertex AI API via Cloud Run
  * @param contents The prompt to send to the model
- * @param oauthToken OAuth token for authentication
- * @param settings Vertex AI settings
+ * @param idToken ID token for authentication
+ * @param settings Vertex AI settings including Cloud Run URL
  * @param parameters Optional generation parameters
  * @returns The API response
  */
 export const callVertexAPI = async (
   contents: string,
-  oauthToken: string,
+  idToken: string,
   settings: VertexSettings,
   parameters: {
     temperature?: number;
@@ -35,17 +31,15 @@ export const callVertexAPI = async (
     topK?: number;
   } = {}
 ): Promise<any> => {
-  if (!oauthToken) {
-    throw new Error('OAuth token is required but not provided');
+  if (!idToken) {
+    throw new Error('ID token is required but not provided');
   }
 
   // Use provided settings with defaults as fallbacks
-  const VERTEX_PROJECT = settings.vertexProject || DEFAULT_VERTEX_SETTINGS.vertexProject;
-  const VERTEX_LOCATION = settings.vertexLocation || DEFAULT_VERTEX_SETTINGS.vertexLocation;
-  const VERTEX_MODEL = settings.vertexModel || DEFAULT_VERTEX_SETTINGS.vertexModel;
+  const CLOUD_RUN_URL = settings.cloudRunUrl || DEFAULT_VERTEX_SETTINGS.cloudRunUrl;
 
-  if (!VERTEX_PROJECT) {
-    throw new Error('Vertex Project ID is required but not provided');
+  if (!CLOUD_RUN_URL) {
+    throw new Error('Cloud Run URL is required but not provided');
   }
 
   // Define default parameters
@@ -59,7 +53,7 @@ export const callVertexAPI = async (
   // Override default parameters with any provided
   const mergedParams = { ...defaultParameters, ...parameters };
   
-  // Construct the request body according to Vertex AI API specs
+  // Construct the request body for Cloud Run vertex-passthrough
   const requestBody = {
     contents: [{
       role: "user",
@@ -73,23 +67,23 @@ export const callVertexAPI = async (
     }
   };
   
-  // Directly call the Vertex AI API using OAuth authentication
-  const endpoint = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`;
+  // Call the Cloud Run vertex-passthrough endpoint
+  const endpoint = `${CLOUD_RUN_URL}/vertex-passthrough`;
   
-  console.log(`Making request to Vertex AI: ${endpoint}`);
+  console.log(`Making request to Cloud Run vertex-passthrough: ${endpoint}`);
   
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${oauthToken}`
+      'Authorization': `Bearer ${idToken}`
     },
     body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`Vertex API error (${response.status}): ${errorText}`);
+    throw new Error(`Cloud Run vertex-passthrough error (${response.status}): ${errorText}`);
   }
 
   return await response.json();
@@ -112,25 +106,25 @@ export const extractTextFromVertexResponse = (responseData: any): string | null 
 };
 
 /**
- * Test Vertex AI settings by making a simple request
- * @param oauthToken OAuth token for authentication
+ * Test Vertex AI settings by making a simple request via Cloud Run
+ * @param idToken ID token for authentication
  * @param settings Vertex AI settings to test
  * @returns Boolean indicating success or failure
  */
 export const testVertexSettings = async (
-  oauthToken: string,
+  idToken: string,
   settings: VertexSettings
 ): Promise<boolean> => {
   try {
     const response = await callVertexAPI(
       "Hello, please respond with 'OK' if you can hear me.",
-      oauthToken,
+      idToken,
       settings,
       { maxOutputTokens: 10 }
     );
     return !!response;
   } catch (error) {
-    console.error('Vertex AI test failed:', error);
+    console.error('Cloud Run vertex-passthrough test failed:', error);
     return false;
   }
 };

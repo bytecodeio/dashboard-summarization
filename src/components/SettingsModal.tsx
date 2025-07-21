@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useState, useRef, useCallback } from 'rea
 import { ExtensionContext } from '@looker/extension-sdk-react';
 import { useAutoOAuth } from '../utils/useAutoOAuth';
 import { useSettings } from '../contexts/SettingsContext';
+import { useSendVertexMessage } from '../utils/useSendVertexMessage';
 
 interface SettingsModalProps {
   open: boolean;
@@ -22,10 +23,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
   
   // Remove all the user attribute management code and replace with:
   const [localSettings, setLocalSettings] = useState({
-    vertex_project: contextSettings.vertexProject,
-    vertex_location: contextSettings.vertexLocation,
-    vertex_model: contextSettings.vertexModel,
     google_oauth_client_id: contextSettings.googleOAuthClientId,
+    cloud_run_url: contextSettings.cloudRunUrl || '',
   });
 
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
@@ -33,7 +32,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
   const [saveSuccess, setSaveSuccess] = useState<boolean | null>(null);
 
   // Use our hook but don't auto-authenticate
-  const { initiateAuth, oauthToken } = useAutoOAuth(false);
+  const { idToken } = useAutoOAuth(false);
+  
+  // Use the updated Vertex message hook
+  const { testVertexSettings: testCloudRunVertexSettings } = useSendVertexMessage();
 
   // Create refs for uncontrolled inputs
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -42,24 +44,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
   useEffect(() => {
     if (open) {
       setLocalSettings({
-        vertex_project: contextSettings.vertexProject,
-        vertex_location: contextSettings.vertexLocation,
-        vertex_model: contextSettings.vertexModel,
         google_oauth_client_id: contextSettings.googleOAuthClientId,
+        cloud_run_url: contextSettings.cloudRunUrl || '',
       });
       
       // Update input refs with current values
-      if (inputRefs.current.vertex_project) {
-        inputRefs.current.vertex_project.value = contextSettings.vertexProject;
-      }
-      if (inputRefs.current.vertex_location) {
-        inputRefs.current.vertex_location.value = contextSettings.vertexLocation;
-      }
-      if (inputRefs.current.vertex_model) {
-        inputRefs.current.vertex_model.value = contextSettings.vertexModel;
-      }
       if (inputRefs.current.google_oauth_client_id) {
         inputRefs.current.google_oauth_client_id.value = contextSettings.googleOAuthClientId;
+      }
+      if (inputRefs.current.cloud_run_url) {
+        inputRefs.current.cloud_run_url.value = contextSettings.cloudRunUrl || '';
       }
     }
   }, [open, contextSettings]);
@@ -74,7 +68,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
         return false;
       }
 
-      initiateAuth();
+      // Since we can't trigger auth directly, we need to save the client ID first
+      // then the user will need to reload or navigate to trigger auto-auth
+      console.log('OAuth setup requires saving client ID first, then reloading the page');
+      alert('Please save the settings first, then reload the page to complete OAuth authentication.');
       return true;
     } catch (error) {
       console.error('OAuth2 authentication failed:', error);
@@ -88,10 +85,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
     try {
       // Get values from refs
       const updatedSettings = {
-        vertexProject: inputRefs.current.vertex_project?.value || '',
-        vertexLocation: inputRefs.current.vertex_location?.value || 'us-central1',
-        vertexModel: inputRefs.current.vertex_model?.value || 'gemini-2.0-flash',
         googleOAuthClientId: inputRefs.current.google_oauth_client_id?.value || '',
+        cloudRunUrl: inputRefs.current.cloud_run_url?.value || '',
       };
       
       // Save using the context (which will save to extension context)
@@ -107,7 +102,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
     }
   };
 
-  // Test Vertex AI settings
+  // Test Vertex AI settings via Cloud Run
   const testVertexSettings = async (): Promise<boolean> => {
     try {
       setVertexTestResult(null);
@@ -115,54 +110,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       // Save settings first before testing
       await handleSaveAllSettings();
       
-      // Use oauthToken directly from the useAutoOAuth hook
-      const tokenToUse = oauthToken; 
-      console.log('Token from useAutoOAuth state (for test):', tokenToUse);
-
       // Get settings from refs
-      const project = inputRefs.current.vertex_project?.value || '';
-      const location = inputRefs.current.vertex_location?.value || 'us-central1';
-      const model = inputRefs.current.vertex_model?.value || 'gemini-2.0-flash';
+      const cloudRunUrl = inputRefs.current.cloud_run_url?.value || '';
 
-      console.log('Vertex Settings for API call: Project:', project, 'Location:', location, 'Model:', model);
+      console.log('Testing Cloud Run Vertex Settings:', { cloudRunUrl });
 
-      if (!tokenToUse) {
-        console.error('No OAuth token available from hook for testVertexSettings');
+      if (!cloudRunUrl) {
+        console.error('Cloud Run URL is required for testing');
         setVertexTestResult(false);
         return false;
       }
       
-      if (!project || !location || !model) {
-        console.error('Vertex settings (project, location, model) are incomplete for testVertexSettings');
-        setVertexTestResult(false);
-        return false;
-      }
+      // Use the updated hook to test via Cloud Run
+      const success = await testCloudRunVertexSettings();
       
-      const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
-      
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${tokenToUse}`
-        },
-        body: JSON.stringify({
-          contents: [{
-            role: "user",
-            parts: [{ text: "Hello, this is a test. Please respond with 'Test successful'" }]
-          }],
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 10
-          }
-        })
-      });
-      
-      const success = response.ok;
       setVertexTestResult(success);
       return success;
     } catch (error) {
-      console.error('Error testing Vertex settings:', error);
+      console.error('Error testing Cloud Run Vertex settings:', error);
       setVertexTestResult(false);
       return false;
     }
@@ -189,29 +154,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
 
   // Update the settings object:
   const settings = {
-    vertex_project: {
-      id: 'vertex_project',
-      name: 'Vertex AI Project',
-      value: localSettings.vertex_project,
-      description: 'Google Cloud Project ID where Vertex AI is enabled'
-    },
-    vertex_location: {
-      id: 'vertex_location',
-      name: 'Vertex AI Location',
-      value: localSettings.vertex_location,
-      description: 'Google Cloud region where Vertex AI is deployed (e.g., us-central1)'
-    },
-    vertex_model: {
-      id: 'vertex_model',
-      name: 'Vertex AI Model',
-      value: localSettings.vertex_model,
-      description: 'Vertex AI model to use for generating content'
-    },
     google_oauth_client_id: {
       id: 'google_oauth_client_id',
       name: 'Google OAuth Client ID',
       value: localSettings.google_oauth_client_id,
       description: 'OAuth client ID from Google Cloud Console'
+    },
+    cloud_run_url: {
+      id: 'cloud_run_url',
+      name: 'Cloud Run Service URL',
+      value: localSettings.cloud_run_url,
+      description: 'URL of the Cloud Run service that provides the /vertex-passthrough endpoint'
     }
   };
 
@@ -277,13 +230,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
               </p>
             )}
             <p>
-              OAuth Status: {oauthToken ? 
+              Authentication Status: {idToken ? 
                 <span className="status-passed">Authenticated</span> : 
                 <span className="status-failed">Not Authenticated</span>
               }
             </p>
             <p>
-              Vertex AI Test: {vertexTestResult === null ? 
+              Cloud Run Vertex Test: {vertexTestResult === null ? 
                 'Not tested' : 
                 vertexTestResult ? 
                   <span className="status-passed">Passed</span> : 

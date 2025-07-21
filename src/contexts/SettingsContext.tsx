@@ -11,10 +11,8 @@ export interface SettingsContextProps {
 }
 
 const defaultSettings: VertexSettings = {
-  vertexProject: '',
-  vertexLocation: 'us-central1',
-  vertexModel: 'gemini-2.0-flash',
   googleOAuthClientId: '',
+  cloudRunUrl: '',
 };
 
 export const SettingsContext = createContext<SettingsContextProps>({
@@ -41,13 +39,10 @@ export const SettingsProvider: React.FC<{children: ReactNode}> = ({ children }) 
           const contextData = extensionSDK.getContextData();
           if (contextData && typeof contextData === 'object') {
             // Validate that the context data has the expected structure
-            if ('vertexProject' in contextData || 'vertexLocation' in contextData || 
-                'vertexModel' in contextData || 'googleOAuthClientId' in contextData) {
+            if ('googleOAuthClientId' in contextData || 'cloudRunUrl' in contextData) {
               contextSettings = {
-                vertexProject: contextData.vertexProject || defaultSettings.vertexProject,
-                vertexLocation: contextData.vertexLocation || defaultSettings.vertexLocation,
-                vertexModel: contextData.vertexModel || defaultSettings.vertexModel,
                 googleOAuthClientId: contextData.googleOAuthClientId || defaultSettings.googleOAuthClientId,
+                cloudRunUrl: contextData.cloudRunUrl || defaultSettings.cloudRunUrl,
               };
             }
           }

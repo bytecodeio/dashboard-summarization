@@ -34,10 +34,8 @@ export const loadUserSettings = async (
 
     // Map user attribute values to their corresponding settings
     const settings: VertexSettings = {
-      vertexProject: '',
-      vertexLocation: 'us-central1', // Default
-      vertexModel: 'gemini-2.0-flash', // Updated default
       googleOAuthClientId: '',
+      cloudRunUrl: '',
     };
 
     // Check each user attribute for matching settings
@@ -49,17 +47,11 @@ export const loadUserSettings = async (
         
         // Map snake_case attribute names back to camelCase
         switch (settingKey) {
-          case 'vertex_project':
-            settings.vertexProject = value || settings.vertexProject;
-            break;
-          case 'vertex_location':
-            settings.vertexLocation = value || settings.vertexLocation;
-            break;
-          case 'vertex_model':
-            settings.vertexModel = value || settings.vertexModel;
-            break;
           case 'google_oauth_client_id':
             settings.googleOAuthClientId = value || settings.googleOAuthClientId;
+            break;
+          case 'cloud_run_url':
+            settings.cloudRunUrl = value || settings.cloudRunUrl;
             break;
         }
       }
