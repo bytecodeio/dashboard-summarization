@@ -12,7 +12,8 @@ export const generateArbitraryResponse = async (
     vertexSettings?: { // Accept settings directly
         vertexProject?: string,
         vertexLocation?: string,
-        vertexModel?: string
+        vertexModel?: string,
+        cloudEndpoint?: string,
     }
 ): Promise<Object> => {
     // Check if token was provided
@@ -26,9 +27,10 @@ export const generateArbitraryResponse = async (
     const VERTEX_PROJECT = vertexSettings?.vertexProject || 'your-default-project';
     const VERTEX_LOCATION = vertexSettings?.vertexLocation || 'us-central1';
     const VERTEX_MODEL = vertexSettings?.vertexModel || 'gemini-1.5-flash';
+    const CLOUD_ENDPOINT = vertexSettings?.cloudEndpoint || ''; 
     
     // const endpoint = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`;
-    const endpoint = `https://looker-explore-assistant-mcp-dnhcuixsgq-uc.a.run.app/vertex-passthrough`;
+    const endpoint = CLOUD_ENDPOINT; 
     console.log('Sending request to Vertex AI:', endpoint);
     
     // Construct the content for Vertex AI

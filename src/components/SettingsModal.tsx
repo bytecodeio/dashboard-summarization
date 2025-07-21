@@ -26,6 +26,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
     vertex_location: contextSettings.vertexLocation,
     vertex_model: contextSettings.vertexModel,
     google_oauth_client_id: contextSettings.googleOAuthClientId,
+    cloud_endpoint: contextSettings.cloudEndpoint, // Add this line
   });
 
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
@@ -46,6 +47,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
         vertex_location: contextSettings.vertexLocation,
         vertex_model: contextSettings.vertexModel,
         google_oauth_client_id: contextSettings.googleOAuthClientId,
+        cloud_endpoint: contextSettings.cloudEndpoint, // Add this line
       });
       
       // Update input refs with current values
@@ -60,6 +62,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       }
       if (inputRefs.current.google_oauth_client_id) {
         inputRefs.current.google_oauth_client_id.value = contextSettings.googleOAuthClientId;
+      }
+      if (inputRefs.current.cloud_endpoint) { // Add this block
+        inputRefs.current.cloud_endpoint.value = contextSettings.cloudEndpoint;
       }
     }
   }, [open, contextSettings]);
@@ -92,6 +97,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
         vertexLocation: inputRefs.current.vertex_location?.value || 'us-central1',
         vertexModel: inputRefs.current.vertex_model?.value || 'gemini-2.0-flash',
         googleOAuthClientId: inputRefs.current.google_oauth_client_id?.value || '',
+        cloudEndpoint: inputRefs.current.cloud_endpoint?.value || '', // Add this line
       };
       
       // Save using the context (which will save to extension context)
@@ -206,6 +212,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose, isAdmin })
       name: 'Vertex AI Model',
       value: localSettings.vertex_model,
       description: 'Vertex AI model to use for generating content'
+    },
+    cloud_endpoint: { // Add this new setting
+      id: 'cloud_endpoint',
+      name: 'Cloud Endpoint',
+      value: localSettings.cloud_endpoint,
+      description: 'Custom endpoint URL for Vertex AI requests (e.g., proxy or gateway URL)'
     },
     google_oauth_client_id: {
       id: 'google_oauth_client_id',

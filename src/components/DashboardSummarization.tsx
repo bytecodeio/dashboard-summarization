@@ -251,7 +251,8 @@ export const DashboardSummarization: React.FC = () => {
     const vertexSettings = {
       vertexProject: settings.vertexProject,
       vertexLocation: settings.vertexLocation,
-      vertexModel: settings.vertexModel
+      vertexModel: settings.vertexModel,
+      cloudEndpoint: settings.cloudEndpoint, // Add this line
     };
 
     const generationData = queryResults || []; // Use empty array if queryResults is null but dashboard has no queries

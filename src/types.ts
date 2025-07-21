@@ -45,7 +45,7 @@ export interface VertexSettings {
   vertexLocation: string;
   vertexModel: string;
   googleOAuthClientId: string;
-  storageType?: StorageType;
+  cloudEndpoint: string; // Add this line
 }
 
 export interface SettingsContextProps {
