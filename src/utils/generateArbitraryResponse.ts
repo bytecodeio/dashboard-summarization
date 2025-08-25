@@ -1,4 +1,11 @@
 import { query } from "@looker/sdk";
+import { getCachedAIResponse, cacheAIResponse } from './caching';
+
+export interface ConversationExchange {
+    userPrompt: string;
+    aiResponse: string;
+    timestamp: number;
+}
 
 export const generateArbitraryResponse = async (
     newQuerySummaries: any[],
@@ -14,7 +21,8 @@ export const generateArbitraryResponse = async (
         vertexLocation?: string,
         vertexModel?: string,
         cloudEndpoint?: string,
-    }
+    },
+    conversationHistory?: ConversationExchange[] // Add conversation history
 ): Promise<Object> => {
     // Check if token was provided
     if (!oauthToken) {
@@ -41,9 +49,17 @@ export const generateArbitraryResponse = async (
         additionalData
     };
     
+    // Create conversation history context (keep last 5 exchanges to manage context size)
+    const recentHistory = conversationHistory ? conversationHistory.slice(-5) : [];
+    const conversationContext = recentHistory.length > 0 
+        ? recentHistory.map((exchange, index) => 
+            `Previous Exchange ${index + 1}:\nUser: ${exchange.userPrompt}\nAssistant: ${exchange.aiResponse}`
+          ).join('\n\n')
+        : '';
+
     // Format the full prompt for the model
     const fullPrompt = `
-      You are an AI assistant analyzing dashboard data.
+      You are an AI assistant analyzing dashboard data. This is a multi-turn conversation about the dashboard.
       
       Here is the dashboard context information:
       ${JSON.stringify(sharedContext, null, 2)}
@@ -53,9 +69,11 @@ export const generateArbitraryResponse = async (
       
       ${additionalData ? `Additional context:\n${JSON.stringify(additionalData, null, 2)}` : ''}
       
-      User request: ${prompt}
+      ${conversationContext ? `Previous conversation context:\n${conversationContext}\n` : ''}
       
-      Provide a detailed analysis based on this information.
+      Current user request: ${prompt}
+      
+      Please respond to the current request while being aware of the previous conversation context. Provide a detailed analysis based on this information.
     `;
 
     // Configure request parameters

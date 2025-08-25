@@ -8,6 +8,24 @@
   width: 100%
 }
 
+/* Darker text for markdown content */
+.darker-text,
+.darker-text p,
+.darker-text li,
+.darker-text div,
+.darker-text span {
+  color: #333 !important;
+}
+
+.darker-text h1,
+.darker-text h2, 
+.darker-text h3,
+.darker-text h4,
+.darker-text h5,
+.darker-text h6 {
+  color: #222 !important;
+}
+
 /* .content {
   flex: 1;
   display: flex;

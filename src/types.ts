@@ -96,11 +96,17 @@ export interface QuerySummary {
   nextSteps: string[];
 }
 
+export interface ConversationExchange {
+    userPrompt: string;
+    aiResponse: string;
+    timestamp: number;
+}
+
 export interface SummaryDataContextType {
     data: string[];
     setData: React.Dispatch<React.SetStateAction<string[]>>;
-    formattedData: string;
-    setFormattedData: React.Dispatch<React.SetStateAction<string>>;
+    conversationHistory: ConversationExchange[];
+    setConversationHistory: React.Dispatch<React.SetStateAction<ConversationExchange[]>>;
     querySuggestions: string[];
     setQuerySuggestions: React.Dispatch<React.SetStateAction<string[]>>;
     info: boolean;

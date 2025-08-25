@@ -30,7 +30,7 @@ import { SummaryDataContext } from '../contexts/SummaryDataContext'
 
 const useSlackOauth = () => {
     const { extensionSDK } = useContext(ExtensionContext)
-    const { formattedData, setInfo, setMessage, dashboardURL } = useContext(SummaryDataContext)
+    const { conversationHistory, setInfo, setMessage, dashboardURL } = useContext(SummaryDataContext)
 
     async function slackOauthImplicitFlow(){
         try {
@@ -146,14 +146,19 @@ const useSlackOauth = () => {
 
     // Post a message to a channel your app is in using ID and message text
     async function publishMessage(accessToken: string) {
-        console.log(formattedData)
-        console.log(formattedData[0])
+        // Get the latest conversation exchange
+        const latestExchange = conversationHistory[conversationHistory.length - 1];
+        const messageContent = latestExchange ? 
+            `User: ${latestExchange.userPrompt}\n\nAssistant: ${latestExchange.aiResponse}` : 
+            'No conversation available';
+        
+        console.log('Latest conversation content:', messageContent);
         try {
             // Call the chat.postMessage method using the built-in WebClient
             const details = {
                 'channel': process.env.CHANNEL_ID!,
                 'token': accessToken,
-                'blocks': JSON.stringify(slackRichTextFormatter(formattedData.trim()))
+                'blocks': JSON.stringify(slackRichTextFormatter(messageContent.trim()))
             }
             var formBody = [];
             for (var property in details) {

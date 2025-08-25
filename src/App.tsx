@@ -31,13 +31,12 @@ import { SettingsProvider } from './contexts/SettingsContext'
 import { hot } from 'react-hot-loader/root'
 
 import { DashboardSummarization } from './components/DashboardSummarization'
-import { DashboardEmbed } from './components/DashboardEmbed'
-import { SummaryDataContextType } from './types'
+import { SummaryDataContextType, ConversationExchange } from './types'
 import './App.css' // Import the CSS file
 
 export const App = hot(() => {
   const [data, setData] = React.useState<string[]>([])
-  const [formattedData, setFormattedData] = React.useState<string>('')
+  const [conversationHistory, setConversationHistory] = React.useState<ConversationExchange[]>([])
   const [querySuggestions, setQuerySuggestions] = React.useState<string[]>([])
   const [info, setInfo] = React.useState(true)
   const [message, setMessage] = React.useState('')
@@ -46,8 +45,8 @@ export const App = hot(() => {
   const contextValue: SummaryDataContextType = {
     data,
     setData,
-    formattedData,
-    setFormattedData,
+    conversationHistory,
+    setConversationHistory,
     querySuggestions,
     setQuerySuggestions,
     info,

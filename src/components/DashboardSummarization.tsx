@@ -25,18 +25,17 @@ SOFTWARE.
 */
 
 import React, { useCallback, useContext, useEffect, useState, useRef } from 'react'
-import { ExtensionContext, ExtensionContext40, ExtensionContextData } from '@looker/extension-sdk-react'
+import { ExtensionContext, ExtensionContextData } from '@looker/extension-sdk-react'
 import { Filters } from '@looker/extension-sdk'
 import MarkdownComponent from './MarkdownComponent'
 import { SummaryDataContext } from '../contexts/SummaryDataContext'
 import { useSettings } from '../contexts/SettingsContext' // Import settings context
 import { fetchDashboardDetails } from '../utils/fetchDashboardDetails'
-import { DashboardMetadata, Query, QuerySummary, SummaryDataContextType } from '../types'
+import { DashboardMetadata, SummaryDataContextType } from '../types'
 import { fetchQueryData } from '../utils/fetchQueryData'
 import { generateArbitraryResponse } from '../utils/generateArbitraryResponse'
 import md5 from 'md5'
 import './Spinner.css' // Import custom spinner CSS
-import { generateFinalSummary } from '../utils/generateFinalSummary'
 import { useAutoOAuth } from '../utils/useAutoOAuth'
 import SettingsModal from './SettingsModal'
 
@@ -45,17 +44,34 @@ export const DashboardSummarization: React.FC = () => {
   const { dashboardFilters: tileDashboardFilters, dashboardId: tileDashboardId } = tileHostData
   const [dashboardMetadata, setDashboardMetadata] = useState<DashboardMetadata>({ dashboardFilters: {}, dashboardId: '', queries: [], description: '', prompt: '' })
   const [prompt, setPrompt] = useState<string | null>(null)
-  const { data, setData, formattedData, setFormattedData, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
+  const { data, setData, conversationHistory, setConversationHistory, setQuerySuggestions, info, setInfo, message, setMessage, setDashboardURL } = useContext(SummaryDataContext) as SummaryDataContextType
   const [temporaryPrompt, setTemporaryPrompt] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false); 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); 
-  
+  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true); // Add this line
+  const [showPreviousResponses, setShowPreviousResponses] = useState(false);
+
   const [queryResults, setQueryResults] = useState<any[] | null>(null);
   const [marketInfo, setMarketInfo] = useState<{ data: any, dashboard: DashboardMetadata | null }>({ data: {}, dashboard: null });
   
   // Get settings from context
   const { settings } = useSettings();
+
+  // Helper function to add AI response to conversation
+  const addToConversation = useCallback((userPrompt: string, aiResponse: string) => {
+    const exchange = {
+      userPrompt,
+      aiResponse,
+      timestamp: Date.now()
+    };
+    setConversationHistory(prev => [...prev, exchange]);
+  }, [setConversationHistory]);
+
+  // Helper function to clear conversation
+  const clearConversation = useCallback(() => {
+    setConversationHistory([]);
+  }, [setConversationHistory]);
 
    useEffect(() => {
     extensionSDK.rendered()
@@ -72,22 +88,61 @@ export const DashboardSummarization: React.FC = () => {
   // Add a ref to track if queries are being fetched
   const queryFetchRef = useRef<Map<string, Promise<any>>>(new Map());
   
+  // Ref to access current conversation history without causing re-renders
+  const conversationHistoryRef = useRef(conversationHistory);
+  conversationHistoryRef.current = conversationHistory;
+  
   // Use the OAuth hook with auto-check enabled but more safely now
   const { isAuthenticating, oauthToken, initiateAuth } = useAutoOAuth(true);
 
-  // Check admin status
+
+  // Admin/developer access check
   useEffect(() => {
     const checkAdminStatus = async () => {
       try {
-        // More robust permission checking should be done here if available
-        // For now, successfully fetching 'me' implies sufficient rights to see settings
-        await core40SDK.ok(core40SDK.me());
-        setIsAdmin(true); 
-        console.log('Admin status set to true');
+        let hasSettingsAccess = false;
+
+        // Method 1: Get user info and try to fetch roles
+        const me = await core40SDK.ok(core40SDK.me());
+
+        // Method 2: Try to get user roles separately
+        try {
+          const userRoles = await core40SDK.ok(core40SDK.user_roles(me.id));
+          if (userRoles && Array.isArray(userRoles)) {
+            hasSettingsAccess = userRoles.some((role: any) => {
+              const roleName = role.name?.toLowerCase() || '';
+              return roleName === 'admin' || roleName === 'developer';
+            });
+          }
+        } catch (rolesError) {
+          // Roles endpoint failed, continue to permission-based check
+        }
+
+        // Method 3: Check if user can access admin endpoints (permission-based check)
+        if (!hasSettingsAccess) {
+          try {
+            await core40SDK.all_users({ limit: 1 });
+            hasSettingsAccess = true;
+          } catch (adminError: any) {
+            const errorMessage = adminError?.message?.toLowerCase() || '';
+            if (
+              errorMessage.includes('permission') ||
+              errorMessage.includes('forbidden') ||
+              errorMessage.includes('unauthorized')
+            ) {
+              hasSettingsAccess = false;
+            } else {
+              hasSettingsAccess = false;
+            }
+          }
+        }
+
+        setIsAdmin(hasSettingsAccess);
+        setIsCheckingAdmin(false);
       } catch (error) {
-        console.error('Error checking admin status or insufficient permissions:', error);
+        console.error('Error checking admin/developer status:', error);
         setIsAdmin(false);
-        console.log('Admin status set to false due to error or insufficient permissions');
+        setIsCheckingAdmin(false);
       }
     };
     checkAdminStatus();
@@ -196,7 +251,7 @@ export const DashboardSummarization: React.FC = () => {
       queryFetchRef.current.clear();
       setQueryResults(null); // Clear previous results
       setMarketInfo({ data: {}, dashboard: null }); // Clear market info
-      setFormattedData(''); // Clear old summary
+      clearConversation(); // Clear old conversation
     }
 
     if (tileDashboardId) {
@@ -225,7 +280,7 @@ export const DashboardSummarization: React.FC = () => {
     if (!oauthToken) {
       console.log('generateSummaryEffect: No OAuth token, skipping generation.');
       // Potentially set a message for the user to authenticate/reload
-      setFormattedData("Error: Authentication required. Please ensure you are logged in with Google, or try reloading. If the issue persists, check settings.");
+      addToConversation(effectivePrompt, "Error: Authentication required. Please ensure you are logged in with Google, or try reloading. If the issue persists, check settings.");
       setIsLoading(false);
       return;
     }
@@ -261,22 +316,23 @@ export const DashboardSummarization: React.FC = () => {
       generationData,
       extensionSDK,
       '', // No restful service
-      setFormattedData,
+      (response: string) => addToConversation(effectivePrompt, response), // Add to conversation instead
       effectivePrompt,
       dashboardMetadata,
       marketInfo.data || {},
       oauthToken, // Pass the OAuth token from useAutoOAuth hook
-      vertexSettings // Pass vertex settings
+      vertexSettings, // Pass vertex settings
+      conversationHistoryRef.current // Pass conversation history for context using ref
     ).then(() => {
       console.log('generateSummaryEffect: Summary generation completed.');
     }).catch(error => {
       console.error('generateSummaryEffect: Error generating summary:', error);
-      setFormattedData(`Error generating summary: ${error.message}`);
+      addToConversation(effectivePrompt, `Error generating summary: ${error.message}`);
     }).finally(() => {
       setIsLoading(false);
     });
 
-  }, [queryResults, dashboardMetadata, prompt, marketInfo, oauthToken, isAuthenticating, extensionSDK, setFormattedData, settings]);
+  }, [queryResults, dashboardMetadata, prompt, marketInfo, oauthToken, isAuthenticating, extensionSDK, addToConversation, settings]);
 
 
   const handlePromptSubmit = (e: React.FormEvent) => {
@@ -298,7 +354,7 @@ export const DashboardSummarization: React.FC = () => {
       )}
       
       <div className="controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', borderBottom: '1px solid #eee' }}>
-        {!dashboardMetadata.prompt && (
+        {(
           <form onSubmit={handlePromptSubmit} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
             <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style={{ marginRight: '0.5rem' }}>
               <circle cx="20" cy="20" r="20" fill="url(#paint0_linear_5319_50439)" />
@@ -316,10 +372,27 @@ export const DashboardSummarization: React.FC = () => {
               type="text"
               value={temporaryPrompt}
               onChange={(e) => setTemporaryPrompt(e.target.value)}
-              placeholder="Enter your prompt"
+              placeholder={conversationHistory.length === 0 ? "Ask me about this dashboard..." : "Ask a follow-up question..."}
               style={{ flex: 1, padding: '0.5rem' }}
             />
             <button type="submit" style={{ marginLeft: '0.5rem', padding: '0.5rem 1rem' }}>Submit</button>
+            {conversationHistory.length > 0 && (
+              <button 
+                type="button" 
+                onClick={clearConversation}
+                style={{ 
+                  marginLeft: '0.5rem', 
+                  background: '#dc3545', 
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Clear Chat
+              </button>
+            )}
           </form>
         )}
         
@@ -331,7 +404,7 @@ export const DashboardSummarization: React.FC = () => {
             console.log('Settings button clicked. Attempting to set isSettingsOpen to true.');
           }} 
           style={{ 
-            marginLeft: dashboardMetadata.prompt ? 'auto' : '1rem',
+            marginLeft: '1rem',
             background: 'transparent',
             border: 'none',
             cursor: 'pointer'
@@ -348,7 +421,63 @@ export const DashboardSummarization: React.FC = () => {
       ) : (
         <div>
           <div style={{ marginBottom: '1rem', paddingLeft: '1rem', marginLeft: '1rem' }}>
-            <MarkdownComponent data={[formattedData]} />
+            {conversationHistory.length > 0 && (
+              <div>
+                {/* Show most recent exchange first */}
+                {conversationHistory.length > 0 && (
+                  <div style={{ marginBottom: '2rem' }}>
+                    <div style={{ marginBottom: '0.5rem', fontWeight: 'bold', color: '#4285F4' }}>
+                      You: {conversationHistory[conversationHistory.length - 1].userPrompt}
+                    </div>
+                    <div style={{ color: '#333' }}>
+                      <MarkdownComponent data={[conversationHistory[conversationHistory.length - 1].aiResponse]} />
+                    </div>
+                  </div>
+                )}
+                
+                {/* Show accordion for previous responses if there are more than 1 */}
+                {conversationHistory.length > 1 && (
+                  <div style={{ marginBottom: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+                    <button
+                      onClick={() => setShowPreviousResponses(!showPreviousResponses)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#666',
+                        cursor: 'pointer',
+                        fontSize: '0.9rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.5rem 0'
+                      }}
+                    >
+                      <span style={{ marginRight: '0.5rem' }}>
+                        {showPreviousResponses ? '▼' : '▶'}
+                      </span>
+                      {showPreviousResponses ? 'Hide' : 'Show'} previous {conversationHistory.length - 1} response{conversationHistory.length - 1 > 1 ? 's' : ''}
+                    </button>
+                    
+                    {showPreviousResponses && (
+                      <div style={{ marginTop: '1rem', borderLeft: '3px solid #eee', paddingLeft: '1rem' }}>
+                        {conversationHistory.slice(0, -1).reverse().map((exchange, index) => (
+                          <div key={index} style={{ marginBottom: '1.5rem', opacity: 0.8 }}>
+                            <div style={{ marginBottom: '0.5rem', fontWeight: 'bold', color: '#4285F4', fontSize: '0.9rem' }}>
+                              You: {exchange.userPrompt}
+                            </div>
+                            <div style={{ color: '#333', fontSize: '0.9rem' }}>
+                              <MarkdownComponent data={[exchange.aiResponse]} />
+                            </div>
+                            {index < conversationHistory.length - 2 && (
+                              <hr style={{ margin: '1rem 0', border: 'none', borderTop: '1px solid #f0f0f0' }} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

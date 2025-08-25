@@ -36,7 +36,7 @@ const MarkdownComponent: React.FC<MarkdownComponentProps> = ({data}) => {
     return (
         <>
         <Markdown 
-            className="markdown"
+            className="markdown darker-text"
             components={{
                 blockquote(props) {
                     const {children, className, node, ...rest} = props
@@ -52,7 +52,7 @@ const MarkdownComponent: React.FC<MarkdownComponentProps> = ({data}) => {
                 )
             },
             li(props) {
-                const {children, className, node, ...rest} = props
+                const {children, className, node, ordered, ...rest} = props
                 return (
                     <>
                     <li className="customList" {...rest}>
