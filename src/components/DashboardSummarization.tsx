@@ -92,11 +92,31 @@ export const DashboardSummarization: React.FC = () => {
   const conversationHistoryRef = useRef(conversationHistory);
   conversationHistoryRef.current = conversationHistory;
   
-  // Use the OAuth hook with auto-check enabled but more safely now
-  const { isAuthenticating, oauthToken, initiateAuth } = useAutoOAuth(true);
+  // Use the OAuth hook with auto-check disabled unless explicitly needed
+  // This prevents aggressive OAuth loops
+  const [shouldTriggerAuth, setShouldTriggerAuth] = useState(false);
+  const { isAuthenticating, oauthToken, initiateAuth, resetAuthState, authErrorCount } = useAutoOAuth(shouldTriggerAuth);
+  
+  // Trigger auth once when component mounts if needed
+  useEffect(() => {
+    if (!oauthToken && !isAuthenticating) {
+      setShouldTriggerAuth(true);
+    }
+    return () => {
+      setShouldTriggerAuth(false); // Clean up on unmount
+    };
+  }, [oauthToken, isAuthenticating]);
+  
+  // Add a reset button when auth errors occur
+  useEffect(() => {
+    if (authErrorCount > 0) {
+      console.log(`Auth errors detected: ${authErrorCount}`);
+      // Could add UI element here to allow manual retry
+    }
+  }, [authErrorCount]);
 
 
-  // Admin/developer access check
+  // Admin access check
   useEffect(() => {
     const checkAdminStatus = async () => {
       try {
@@ -104,43 +124,28 @@ export const DashboardSummarization: React.FC = () => {
 
         // Method 1: Get user info and try to fetch roles
         const me = await core40SDK.ok(core40SDK.me());
-
+        console.log('Current user info:', me);
         // Method 2: Try to get user roles separately
         try {
-          const userRoles = await core40SDK.ok(core40SDK.user_roles(me.id));
+          // Fix the TypeScript error by ensuring the ID is valid and non-undefined
+          const userId = me.id || ''; // Provide empty string as fallback
+          const userRoles = await core40SDK.ok(core40SDK.user_roles({ user_id: userId }));
+          console.log('User roles:', userRoles);
           if (userRoles && Array.isArray(userRoles)) {
             hasSettingsAccess = userRoles.some((role: any) => {
               const roleName = role.name?.toLowerCase() || '';
-              return roleName === 'admin' || roleName === 'developer';
+              return roleName === 'admin' ;
             });
           }
         } catch (rolesError) {
           // Roles endpoint failed, continue to permission-based check
         }
 
-        // Method 3: Check if user can access admin endpoints (permission-based check)
-        if (!hasSettingsAccess) {
-          try {
-            await core40SDK.all_users({ limit: 1 });
-            hasSettingsAccess = true;
-          } catch (adminError: any) {
-            const errorMessage = adminError?.message?.toLowerCase() || '';
-            if (
-              errorMessage.includes('permission') ||
-              errorMessage.includes('forbidden') ||
-              errorMessage.includes('unauthorized')
-            ) {
-              hasSettingsAccess = false;
-            } else {
-              hasSettingsAccess = false;
-            }
-          }
-        }
 
         setIsAdmin(hasSettingsAccess);
         setIsCheckingAdmin(false);
       } catch (error) {
-        console.error('Error checking admin/developer status:', error);
+        console.error('Error checking admin status:', error);
         setIsAdmin(false);
         setIsCheckingAdmin(false);
       }
@@ -261,14 +266,25 @@ export const DashboardSummarization: React.FC = () => {
 
 
   // Step 2: useEffect for generating summaries when data or prompt changes
+  // Track whether we've already generated for this prompt/dashboard combination
+  const generationTracker = useRef<{ prompt: string | null, dashboardId: string | null }>({ prompt: null, dashboardId: null });
+
   useEffect(() => {
     const effectivePrompt = prompt || dashboardMetadata.prompt;
 
     if (!effectivePrompt) {
       console.log('generateSummaryEffect: No prompt available, skipping generation.');
-      if (initializationRef.current.hasInitialized && !initializationRef.current.isInitializing) {
+      // Only set loading to false if we're actually in a loading state
+      if (isLoading && initializationRef.current.hasInitialized && !initializationRef.current.isInitializing) {
          setIsLoading(false); // Stop loading if data is fetched but no prompt
       }
+      return;
+    }
+    
+    // Skip if we've already generated for this exact prompt/dashboard combination
+    if (generationTracker.current.prompt === effectivePrompt && 
+        generationTracker.current.dashboardId === dashboardMetadata.dashboardId) {
+      console.log('generateSummaryEffect: Already generated for this prompt/dashboard, skipping.');
       return;
     }
 
@@ -332,7 +348,14 @@ export const DashboardSummarization: React.FC = () => {
       setIsLoading(false);
     });
 
-  }, [queryResults, dashboardMetadata, prompt, marketInfo, oauthToken, isAuthenticating, extensionSDK, addToConversation, settings]);
+    
+    // Update our tracking to prevent duplicate generations
+    generationTracker.current = {
+      prompt: effectivePrompt,
+      dashboardId: dashboardMetadata.dashboardId
+    };
+    
+  }, [queryResults, dashboardMetadata, prompt, marketInfo, oauthToken, isAuthenticating, extensionSDK, addToConversation, settings, isLoading]);
 
 
   const handlePromptSubmit = (e: React.FormEvent) => {
@@ -347,6 +370,36 @@ export const DashboardSummarization: React.FC = () => {
 
   return (
     <div className="dashboard-summarization">
+      {authErrorCount > 0 && (
+        <div className="error-message" style={{ 
+          backgroundColor: '#f8d7da', 
+          color: '#721c24', 
+          padding: '10px', 
+          borderRadius: '4px',
+          margin: '10px 0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <span>Authentication failed. Please check your settings or try again.</span>
+          <button 
+            onClick={() => {
+              resetAuthState();
+              setTimeout(() => initiateAuth(), 500);
+            }}
+            style={{
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none',
+              padding: '5px 10px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Retry Authentication
+          </button>
+        </div>
+      )}
       {message && (
         <div className="message" style={{ top: info ? document.documentElement.scrollTop || document.body.scrollTop : -100 }}>
           {message}

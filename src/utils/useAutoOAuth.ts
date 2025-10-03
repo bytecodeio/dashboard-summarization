@@ -2,6 +2,11 @@ import { useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { ExtensionContext } from '@looker/extension-sdk-react';
 import { useSettings } from '../contexts/SettingsContext';
 
+// Constants for retry logic
+const MAX_AUTH_RETRIES = 2; // Maximum number of retries after initial attempt
+const RETRY_DELAY_BASE = 2000; // Base delay in ms (will be multiplied by 2^retryCount)
+const MAX_RETRY_DELAY = 30000; // Maximum retry delay in ms
+
 export const useAutoOAuth = (triggerAuth: boolean = false) => {
   const { extensionSDK, core40SDK } = useContext(ExtensionContext);
   const { settings } = useSettings(); // Use the settings context
@@ -9,6 +14,9 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
   // Use state instead of localStorage for token storage
   const [oauthToken, setOauthToken] = useState<string | null>(null);
   const [tokenExpiry, setTokenExpiry] = useState<number | null>(null);
+  // Track auth errors to implement backoff
+  const [authErrorCount, setAuthErrorCount] = useState<number>(0);
+  const [nextRetryTime, setNextRetryTime] = useState<number | null>(null);
   
   // Use a ref to track if we've attempted auth in this session
   const authAttemptedRef = useRef<boolean>(false);
@@ -47,10 +55,13 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
     }
   }, [preAuthUrl]);
 
+  // Use a ref to prevent multiple concurrent auth attempts
+  const authInProgressRef = useRef<boolean>(false);
+  
   // Initiate OAuth flow
   const initiateAuth = useCallback(async () => {
-    // Skip if already authenticating
-    if (isAuthenticating) {
+    // Skip if already authenticating or auth in progress
+    if (isAuthenticating || authInProgressRef.current) {
       console.log('OAuth flow already in progress, skipping duplicate request');
       return;
     }
@@ -67,6 +78,7 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
 
     // Mark that we've attempted auth for this session
     authAttemptedRef.current = true;
+    authInProgressRef.current = true;
     setIsAuthenticating(true);
     
     // Save current URL to redirect back after auth
@@ -100,6 +112,8 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
       setIsAuthenticating(false);
       // Reset auth attempted flag on failure so it can be tried again
       authAttemptedRef.current = false;
+    } finally {
+      authInProgressRef.current = false;
     }
   }, [extensionSDK, handleAuthSuccess, isAuthenticating, clientId, sdkReady]);
 
@@ -129,40 +143,54 @@ export const useAutoOAuth = (triggerAuth: boolean = false) => {
   }, [core40SDK, extensionSDK]);
 
   // Once settings are loaded and SDK is ready, decide if we need to authenticate
+  // Using a more focused approach with fewer conditions to prevent loops
   useEffect(() => {
-    if (!settingsLoaded || !sdkReady) {
-      console.log(`Waiting for prerequisites - settingsLoaded: ${settingsLoaded}, sdkReady: ${sdkReady}`);
+    // Early return if prerequisites aren't ready
+    if (!settingsLoaded || !sdkReady || !clientId || authInProgressRef.current || isAuthenticating) {
       return;
     }
     
-    const checkAndAuthenticate = async () => {
-      // Check if token exists and is valid
-      if (isTokenValid()) {
-        console.log('Valid OAuth token exists, no need to authenticate');
-        return;
-      }
-      
-      // Reset auth attempted flag if token is invalid/missing
-      if (!isTokenValid()) {
-        authAttemptedRef.current = false;
-      }
-      
-      // Trigger auth if:
-      // 1. triggerAuth is true and we haven't attempted yet, OR
-      // 2. We have a clientId and no valid token and haven't attempted yet
-      if (!authAttemptedRef.current && triggerAuth && clientId) {
-        console.log('Triggering OAuth authentication (trigger mode)...');
-        await initiateAuth();
-      } else if (!authAttemptedRef.current && clientId && !isTokenValid()) {
-        console.log('No valid token found, triggering OAuth authentication...');
-        await initiateAuth();
-      } else if (triggerAuth && !clientId) {
-        console.log('OAuth client ID is missing. Please configure it in settings.');
-      }
-    };
+    // Check if we're in backoff period after errors
+    if (nextRetryTime !== null && Date.now() < nextRetryTime) {
+      // Still in backoff period, don't retry yet
+      return;
+    }
     
-    checkAndAuthenticate();
-  }, [settingsLoaded, sdkReady, triggerAuth, isTokenValid, initiateAuth, clientId]);
+    // Check if we've exceeded max retries
+    if (authErrorCount > MAX_AUTH_RETRIES) {
+      console.log(`Exceeded maximum auth retry attempts (${MAX_AUTH_RETRIES}). Not attempting again.`);
+      return;
+    }
+    
+    // Only proceed if we need auth and haven't already tried or if explicitly requested
+    if ((!authAttemptedRef.current && !isTokenValid()) || (triggerAuth && !isTokenValid())) {
+      console.log('Authentication needed, initiating OAuth flow');
+      // Use timeout to break potential circular dependencies
+      const timeoutId = setTimeout(() => {
+        initiateAuth();
+      }, 10);
+      
+      return () => clearTimeout(timeoutId); // Clean up timeout on effect cleanup
+    }
+  }, [settingsLoaded, sdkReady, triggerAuth, isTokenValid, initiateAuth, clientId, isAuthenticating, nextRetryTime, authErrorCount]);
 
-  return { isAuthenticating, oauthToken, initiateAuth, handleAuthSuccess, clientId, sdkReady, settingsLoaded };
+  // Add reset function to allow manual reset of auth state
+  const resetAuthState = useCallback(() => {
+    setAuthErrorCount(0);
+    setNextRetryTime(null);
+    authAttemptedRef.current = false;
+    authInProgressRef.current = false;
+  }, []);
+  
+  return { 
+    isAuthenticating, 
+    oauthToken, 
+    initiateAuth, 
+    handleAuthSuccess, 
+    clientId, 
+    sdkReady, 
+    settingsLoaded,
+    resetAuthState,
+    authErrorCount
+  };
 };
