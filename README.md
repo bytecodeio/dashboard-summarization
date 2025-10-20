@@ -69,9 +69,127 @@ If you have the [Looker Explore Assistant](https://github.com/looker-open-source
 - **Consistent Experience**: Same AI model and settings across both tools
 
 #### Prerequisites
-- Deployed Looker Explore Assistant with Cloud Run backend
-- Google Cloud OAuth 2.0 credentials configured
-- Admin access to both Looker extensions
+- Google Cloud Project with billing enabled
+- Google Cloud CLI (`gcloud`) installed and configured
+- Docker installed (for local testing)
+- Admin access to Looker instance
+
+#### Deploy the Shared Explore Assistant Backend
+
+If you don't already have the explore-assistant backend deployed, follow these steps to deploy it:
+
+1. **Clone the Explore Assistant Repository**
+   ```bash
+   git clone https://github.com/looker-open-source/looker-explore-assistant.git
+   cd looker-explore-assistant/explore-assistant-cloud-function
+   ```
+
+2. **Set Environment Variables**
+   ```bash
+   export PROJECT="your-gcp-project-id"
+   export REGION="us-central1"  # Or your preferred region
+   export VERTEX_MODEL="gemini-2.0-flash-001"  # Or your preferred model
+   ```
+
+3. **Enable Required Google Cloud APIs**
+   ```bash
+   gcloud services enable cloudfunctions.googleapis.com
+   gcloud services enable run.googleapis.com
+   gcloud services enable cloudbuild.googleapis.com
+   gcloud services enable aiplatform.googleapis.com
+   gcloud services enable secretmanager.googleapis.com
+   ```
+
+4. **Create Service Account and Set Permissions**
+   ```bash
+   # Create service account
+   gcloud iam service-accounts create explore-assistant-sa \
+     --description="Service account for Looker Explore Assistant" \
+     --display-name="Explore Assistant Service Account"
+
+   # Grant necessary permissions
+   gcloud projects add-iam-policy-binding $PROJECT \
+     --member="serviceAccount:explore-assistant-sa@$PROJECT.iam.gserviceaccount.com" \
+     --role="roles/aiplatform.user"
+
+   gcloud projects add-iam-policy-binding $PROJECT \
+     --member="serviceAccount:explore-assistant-sa@$PROJECT.iam.gserviceaccount.com" \
+     --role="roles/bigquery.dataViewer"
+   ```
+
+5. **Deploy the Backend to Cloud Run**
+   ```bash
+   # Build and deploy the Cloud Run service
+   gcloud run deploy explore-assistant \
+     --source . \
+     --platform managed \
+     --region $REGION \
+     --allow-unauthenticated \
+     --service-account explore-assistant-sa@$PROJECT.iam.gserviceaccount.com \
+     --set-env-vars PROJECT=$PROJECT,REGION=$REGION,VERTEX_MODEL=$VERTEX_MODEL \
+     --memory 2Gi \
+     --cpu 2 \
+     --timeout 900 \
+     --max-instances 10
+   ```
+
+6. **Get the Deployed Service URL**
+   ```bash
+   gcloud run services describe explore-assistant --region=$REGION --format='value(status.url)'
+   ```
+   
+   Save this URL - you'll use it as the `Cloud Endpoint` in both extensions.
+
+7. **Configure Backend Settings (Optional)**
+   
+   The backend supports additional configuration via environment variables:
+   ```bash
+   # Advanced model configuration
+   gcloud run services update explore-assistant \
+     --region $REGION \
+     --set-env-vars \
+       BQ_PROJECT_ID=$PROJECT,\
+       BQ_DATASET_ID=explore_assistant,\
+       LOOKER_BASE_URL=https://your-instance.cloud.looker.com,\
+       LOOKER_CLIENT_ID=your-looker-client-id,\
+       LOOKER_CLIENT_SECRET=your-looker-client-secret
+   ```
+
+8. **Test the Backend Deployment**
+   ```bash
+   # Test health endpoint
+   curl "$(gcloud run services describe explore-assistant --region=$REGION --format='value(status.url)')/health"
+   
+   # Should return: {"status": "healthy"}
+   
+   # Test generateContent endpoint (requires authentication)
+   curl -X POST "$(gcloud run services describe explore-assistant --region=$REGION --format='value(status.url)')/generateContent" \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+     -d '{"contents": [{"role": "user", "parts": [{"text": "Hello, test message"}]}]}'
+   ```
+
+#### Alternative: Deploy via Cloud Functions (Legacy)
+
+If you prefer Cloud Functions over Cloud Run:
+
+1. **Deploy as Cloud Function**
+   ```bash
+   gcloud functions deploy explore-assistant \
+     --gen2 \
+     --runtime python311 \
+     --trigger-http \
+     --allow-unauthenticated \
+     --region $REGION \
+     --memory 2Gi \
+     --timeout 540 \
+     --set-env-vars PROJECT=$PROJECT,REGION=$REGION,VERTEX_MODEL=$VERTEX_MODEL
+   ```
+
+2. **Get Function URL**
+   ```bash
+   gcloud functions describe explore-assistant --region=$REGION --format='value(serviceConfig.uri)'
+   ```
 
 #### Setup Instructions
 
