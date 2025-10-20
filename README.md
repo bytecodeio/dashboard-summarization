@@ -2,6 +2,8 @@
 
 This is an extension or plugin for Looker that integrates LLM's hosted on Vertex AI into a dashboard summarization experience.
 
+> **Branch Notice**: This `shared_cloud_backend2` branch is optimized for sharing backend infrastructure with the [Looker Explore Assistant](https://github.com/looker-open-source/looker-explore-assistant). It supports both shared and standalone deployment options.
+
 ![explore assistant](https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbzRrZ200dnB3YWg1Y3AwazVjdm44ZWx3dWZjZ2NtcGVieWZuY3VmNiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/kIXodRHInpIds8KPvC/giphy.gif)
 
 ## Description
@@ -49,6 +51,75 @@ Upcoming capabilities on the roadmap:
 ## Setup
 
 ![simple-architecture](./src/assets/dashboard-summarization-architecture.png)
+
+## Deployment Options
+
+This dashboard-summarization extension supports two deployment architectures:
+
+1. **Shared Backend with Explore Assistant** (Recommended) - Use the shared cloud backend from the explore-assistant project
+2. **Standalone Backend** - Deploy your own dedicated backend service
+
+### Option 1: Shared Backend with Explore Assistant (Recommended)
+
+If you have the [Looker Explore Assistant](https://github.com/looker-open-source/looker-explore-assistant) deployed, you can share its backend infrastructure with the dashboard-summarization extension. This approach provides:
+
+- **Cost Efficiency**: Single backend serves both applications
+- **Unified Authentication**: One OAuth setup for both extensions  
+- **Simplified Management**: Single deployment to maintain
+- **Consistent Experience**: Same AI model and settings across both tools
+
+#### Prerequisites
+- Deployed Looker Explore Assistant with Cloud Run backend
+- Google Cloud OAuth 2.0 credentials configured
+- Admin access to both Looker extensions
+
+#### Setup Instructions
+
+1. **Get the Explore Assistant Backend URL**
+   
+   Find your deployed explore-assistant Cloud Run URL:
+   ```bash
+   gcloud run services list --filter="dashboard-summarization OR explore-assistant"
+   ```
+   
+   The URL will look like: `https://your-service-name-xxxxxxxxxx-xx.a.run.app`
+
+2. **Configure Dashboard Summarization Settings**
+   
+   In your Looker instance, open the Dashboard Summarization extension and click the Settings gear icon (admin access required):
+   
+   - **Cloud Endpoint**: Enter your explore-assistant backend URL
+   - **Vertex Project**: Your Google Cloud Project ID
+   - **Vertex Location**: Your Vertex AI region (e.g., `us-central1`)
+   - **Vertex Model**: AI model name (e.g., `gemini-2.0-flash`)
+   - **Google OAuth Client ID**: Your OAuth 2.0 client ID
+
+3. **Verify OAuth Configuration**
+   
+   Ensure your OAuth client has the dashboard-summarization callback URL:
+   - Go to [Google Cloud Console > APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials)
+   - Edit your OAuth 2.0 client
+   - Add authorized redirect URI: `https://your-looker-instance.cloud.looker.com/extensions/dashboard-summarization/oauth-callback`
+
+4. **Test the Integration**
+   
+   - Open a Looker dashboard
+   - Launch the Dashboard Summarization extension
+   - Verify OAuth authentication works
+   - Test generating a dashboard summary
+
+#### Shared Backend Benefits
+
+- **Single Point of Maintenance**: Update AI models and settings in one place
+- **Resource Optimization**: Shared compute resources and cost allocation
+- **Consistent AI Behavior**: Same prompts and model configurations
+- **Unified Monitoring**: Combined logging and metrics for both applications
+
+---
+
+### Option 2: Standalone Backend Deployment
+
+If you prefer to deploy a dedicated backend for dashboard-summarization, follow these instructions:
 
 ### 1. Generative AI & Restful Server
 
@@ -156,11 +227,13 @@ jsonPayload.component="dashboard-summarization-logs"
 
 ### 2. Google Cloud OAuth Setup for Vertex AI
 
-To enable direct authentication with Vertex AI, you need to set up OAuth credentials in Google Cloud:
+To enable authentication with Vertex AI (required for both shared and standalone backends), you need to set up OAuth credentials in Google Cloud:
+
+> **Note**: If using the shared explore-assistant backend, you can reuse the existing OAuth configuration from that deployment.
 
 1. **Create or Select a Google Cloud Project**
    - Go to the [Google Cloud Console](https://console.cloud.google.com/)
-   - Create a new project or select an existing one where you plan to use Vertex AI
+   - Use the same project as your explore-assistant (for shared backend) or create a new project for standalone deployment
 
 2. **Enable Required APIs**
    - Navigate to "APIs & Services" > "Library"
@@ -276,8 +349,13 @@ RESTFUL_SERVICE=<Required: Cloud run endpoint url>
             use_form_submit: yes
             core_api_methods: ["run_inline_query","all_lookml_models","dashboard","dashboard_dashboard_elements"]
             external_api_urls: [
-           "YOUR CLOUD RUN URL","http://localhost:5000","http://localhost:3000","https://*.googleapis.com","https://slack.com/api/*","https://slack.com/*"
-          ]
+              "YOUR_BACKEND_URL",  # Replace with your explore-assistant or standalone backend URL
+              "http://localhost:5000",  # For local development
+              "http://localhost:3000",  # For local development  
+              "https://*.googleapis.com",  # Required for Vertex AI API calls
+              "https://slack.com/api/*",  # Optional: for Slack integration
+              "https://slack.com/*"  # Optional: for Slack integration
+            ]
             oauth2_urls: [
               "https://accounts.google.com/o/oauth2/v2/auth",
               "https://www.googleapis.com/auth/chat.spaces",
@@ -321,6 +399,40 @@ The process above requires your local development server to be running to load t
 
 Note that the additional JavaScript files generated during the production build process do not have to be mentioned in the manifest. These files will be loaded dynamically by the extension as and when they are needed. Note that to utilize code splitting, the Looker server must be at version 7.21 or above.
 
+---
+
+## Switching Between Deployment Modes
+
+You can switch between shared backend and standalone backend configurations without redeploying the extension:
+
+### Switch to Shared Backend
+1. Open the Dashboard Summarization extension in Looker
+2. Click the Settings gear icon (requires admin access)
+3. Configure the following settings:
+   - **Cloud Endpoint**: Enter your explore-assistant backend URL (e.g., `https://your-explore-assistant-xxxxx-xx.a.run.app`)
+   - **Vertex Project**: Your Google Cloud Project ID
+   - **Vertex Location**: Your Vertex AI region
+   - **Vertex Model**: AI model name
+   - **Google OAuth Client ID**: Your OAuth client ID
+4. Save settings and test authentication
+
+### Switch to Standalone Backend
+1. Deploy your own dashboard-summarization backend using the instructions in "Option 2: Standalone Backend Deployment"
+2. Update the extension settings:
+   - **Cloud Endpoint**: Enter your dedicated backend URL
+   - Configure other Vertex AI settings as needed
+3. Ensure your OAuth client includes the correct redirect URIs for both extensions
+
+### Configuration Validation
+- Test OAuth authentication works correctly
+- Verify dashboard summaries generate successfully  
+- Check that conversation history persists properly
+- Monitor Cloud Run logs for any errors
+
+> **Tip**: Settings are stored in the Looker extension context and persist across sessions. You can easily switch between backends for testing or migration purposes.
+
+---
+
 ### 3. [Optional] Export Integration Setup
 
  #### Slack OAuth Setup 
@@ -346,3 +458,46 @@ Note that the additional JavaScript files generated during the production build 
 This app uses a one shot prompt technique for fine tuning the LLM, meaning that all the metadata for the dashboard and request is contained in the prompt. To improve the accuracy, detail, and depth of the summaries and prescriptive steps returned by the LLM please pass as much context about the dashboard and the general recommendation themes in the prompt sent to the model. This can all be done through Looker as opposed to hard coded in the Cloud Run Service. Details below:
 * Add dashboard details to each dashboard the extension is added to. This is used to inform the LLM of the general context of the report (see [these docs](https://cloud.google.com/looker/docs/editing-user-defined-dashboards#editing_dashboard_details) for more detail).
 * Add notes to each tile on a dashboard. This is used to inform the LLM of the general context of each individual query on the dashboard. Use this to add small contextual notes the LLM should consider when generating the summary (see [these docs](https://cloud.google.com/looker/docs/editing-user-defined-dashboards#:~:text=Adding%20a%20tile%20note,use%20plain%20text%20or%20HTML.) for more details on adding tile notes).
+
+---
+
+## Troubleshooting
+
+### Shared Backend Issues
+
+**Authentication Errors**
+- Verify OAuth client ID is correct in extension settings
+- Ensure the redirect URI includes `/extensions/dashboard-summarization/oauth-callback` 
+- Check that the same Google Cloud project is used for both extensions
+- Confirm the user has Vertex AI permissions in the Google Cloud project
+
+**Backend Connection Issues**
+- Verify the Cloud Endpoint URL is correct and accessible
+- Check that the explore-assistant backend is deployed and running
+- Ensure Cloud Run service allows unauthenticated requests or has proper IAM configured
+- Test the backend URL directly: `curl -X GET https://your-backend-url/health`
+
+**Model Configuration Issues**
+- Verify Vertex AI API is enabled in your Google Cloud project
+- Check that the specified model (e.g., `gemini-2.0-flash`) is available in your region
+- Ensure the Vertex AI location matches your Cloud Run deployment region
+- Validate that your project has Vertex AI quotas and billing enabled
+
+**Extension Settings Not Saving**
+- Confirm you have admin access in Looker to modify extension settings
+- Try refreshing the browser and reopening the settings modal
+- Check browser developer console for any JavaScript errors
+- Verify the extension has `local_storage` entitlements in the manifest
+
+**Dashboard Summary Errors**
+- Check that OAuth authentication completed successfully (green checkmark)
+- Verify the dashboard has queries with data returned
+- Ensure the conversation history isn't hitting token limits (clear chat if needed)
+- Monitor Cloud Run logs for backend errors: `gcloud logs tail --service=your-service-name`
+
+### Getting Help
+
+- Check the [Looker Community](https://community.looker.com/) for common issues
+- Review Cloud Run service logs for detailed error messages
+- Enable debug mode in browser developer tools to see detailed request/response data
+- For shared backend issues, also check the explore-assistant documentation and logs
