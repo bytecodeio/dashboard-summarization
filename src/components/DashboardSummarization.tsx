@@ -36,7 +36,6 @@ import { fetchQueryData } from '../utils/fetchQueryData'
 import { generateArbitraryResponse } from '../utils/generateArbitraryResponse'
 import md5 from 'md5'
 import './Spinner.css' // Import custom spinner CSS
-import { useAutoOAuth } from '../utils/useAutoOAuth'
 import SettingsModal from './SettingsModal'
 
 export const DashboardSummarization: React.FC = () => {
@@ -91,29 +90,6 @@ export const DashboardSummarization: React.FC = () => {
   // Ref to access current conversation history without causing re-renders
   const conversationHistoryRef = useRef(conversationHistory);
   conversationHistoryRef.current = conversationHistory;
-  
-  // Use the OAuth hook with auto-check disabled unless explicitly needed
-  // This prevents aggressive OAuth loops
-  const [shouldTriggerAuth, setShouldTriggerAuth] = useState(false);
-  const { isAuthenticating, oauthToken, initiateAuth, resetAuthState, authErrorCount } = useAutoOAuth(shouldTriggerAuth);
-  
-  // Trigger auth once when component mounts if needed
-  useEffect(() => {
-    if (!oauthToken && !isAuthenticating) {
-      setShouldTriggerAuth(true);
-    }
-    return () => {
-      setShouldTriggerAuth(false); // Clean up on unmount
-    };
-  }, [oauthToken, isAuthenticating]);
-  
-  // Add a reset button when auth errors occur
-  useEffect(() => {
-    if (authErrorCount > 0) {
-      console.log(`Auth errors detected: ${authErrorCount}`);
-      // Could add UI element here to allow manual retry
-    }
-  }, [authErrorCount]);
 
 
   // Admin access check
@@ -159,11 +135,6 @@ export const DashboardSummarization: React.FC = () => {
       console.log('fetchEssentialData: No tileDashboardId, skipping.');
       return;
     }
-    // Don't proceed if we're authenticating (relevant if auth affects data fetching ability)
-    // if (isAuthenticating) {
-    //   console.log('fetchEssentialData: OAuth authentication in progress, delaying data fetching');
-    //   return;
-    // }
 
     const filterHash = JSON.stringify(tileDashboardFilters || {});
 
@@ -282,22 +253,9 @@ export const DashboardSummarization: React.FC = () => {
     }
     
     // Skip if we've already generated for this exact prompt/dashboard combination
-    if (generationTracker.current.prompt === effectivePrompt && 
+    if (generationTracker.current.prompt === effectivePrompt &&
         generationTracker.current.dashboardId === dashboardMetadata.dashboardId) {
       console.log('generateSummaryEffect: Already generated for this prompt/dashboard, skipping.');
-      return;
-    }
-
-    if (isAuthenticating) {
-      console.log('generateSummaryEffect: OAuth authentication in progress, delaying generation.');
-      return;
-    }
-
-    if (!oauthToken) {
-      console.log('generateSummaryEffect: No OAuth token, skipping generation.');
-      // Potentially set a message for the user to authenticate/reload
-      addToConversation(effectivePrompt, "Error: Authentication required. Please ensure you are logged in with Google, or try reloading. If the issue persists, check settings.");
-      setIsLoading(false);
       return;
     }
 
@@ -318,32 +276,33 @@ export const DashboardSummarization: React.FC = () => {
     console.log('generateSummaryEffect: Attempting to generate summary. Effective prompt:', effectivePrompt);
     setIsLoading(true);
 
-    // Get Vertex settings from context
-    const vertexSettings = {
-      vertexProject: settings.vertexProject,
-      vertexLocation: settings.vertexLocation,
-      vertexModel: settings.vertexModel,
-      cloudEndpoint: settings.cloudEndpoint, // Add this line
-    };
+    // Get backend service URL from settings
+    const backendServiceUrl = settings.backendServiceUrl;
+
+    if (!backendServiceUrl) {
+      console.error('generateSummaryEffect: Backend service URL not configured.');
+      addToConversation(effectivePrompt, "Error: Backend service not configured. Please contact your administrator to configure the backend service URL.");
+      setIsLoading(false);
+      return;
+    }
 
     const generationData = queryResults || []; // Use empty array if queryResults is null but dashboard has no queries
 
     generateArbitraryResponse(
       generationData,
       extensionSDK,
-      '', // No restful service
+      backendServiceUrl,
       (response: string) => addToConversation(effectivePrompt, response), // Add to conversation instead
       effectivePrompt,
       dashboardMetadata,
       marketInfo.data || {},
-      oauthToken, // Pass the OAuth token from useAutoOAuth hook
-      vertexSettings, // Pass vertex settings
       conversationHistoryRef.current // Pass conversation history for context using ref
     ).then(() => {
       console.log('generateSummaryEffect: Summary generation completed.');
     }).catch(error => {
       console.error('generateSummaryEffect: Error generating summary:', error);
-      addToConversation(effectivePrompt, `Error generating summary: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      addToConversation(effectivePrompt, `Error generating summary: ${errorMessage}`);
     }).finally(() => {
       setIsLoading(false);
     });
@@ -354,8 +313,8 @@ export const DashboardSummarization: React.FC = () => {
       prompt: effectivePrompt,
       dashboardId: dashboardMetadata.dashboardId
     };
-    
-  }, [queryResults, dashboardMetadata, prompt, marketInfo, oauthToken, isAuthenticating, extensionSDK, addToConversation, settings, isLoading]);
+
+  }, [queryResults, dashboardMetadata, prompt, marketInfo, extensionSDK, addToConversation, settings, isLoading]);
 
 
   const handlePromptSubmit = (e: React.FormEvent) => {
@@ -370,36 +329,6 @@ export const DashboardSummarization: React.FC = () => {
 
   return (
     <div className="dashboard-summarization">
-      {authErrorCount > 0 && (
-        <div className="error-message" style={{ 
-          backgroundColor: '#f8d7da', 
-          color: '#721c24', 
-          padding: '10px', 
-          borderRadius: '4px',
-          margin: '10px 0',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <span>Authentication failed. Please check your settings or try again.</span>
-          <button 
-            onClick={() => {
-              resetAuthState();
-              setTimeout(() => initiateAuth(), 500);
-            }}
-            style={{
-              backgroundColor: '#dc3545',
-              color: 'white',
-              border: 'none',
-              padding: '5px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            Retry Authentication
-          </button>
-        </div>
-      )}
       {message && (
         <div className="message" style={{ top: info ? document.documentElement.scrollTop || document.body.scrollTop : -100 }}>
           {message}

@@ -11,11 +11,7 @@ export interface SettingsContextProps {
 }
 
 const defaultSettings: VertexSettings = {
-  vertexProject: '',
-  vertexLocation: 'us-central1',
-  vertexModel: 'gemini-2.0-flash',
-  googleOAuthClientId: '',
-  cloudEndpoint: '', 
+  backendServiceUrl: process.env.BACKEND_SERVICE_URL || '',
 };
 
 export const SettingsContext = createContext<SettingsContextProps>({
@@ -42,15 +38,9 @@ export const SettingsProvider: React.FC<{children: ReactNode}> = ({ children }) 
           const contextData = extensionSDK.getContextData();
           if (contextData && typeof contextData === 'object') {
             // Validate that the context data has the expected structure
-            if ('vertexProject' in contextData || 'vertexLocation' in contextData || 
-                'vertexModel' in contextData || 'googleOAuthClientId' in contextData ||
-                'cloudEndpoint' in contextData) { // Add cloudEndpoint to validation
+            if ('backendServiceUrl' in contextData) {
               contextSettings = {
-                vertexProject: contextData.vertexProject || defaultSettings.vertexProject,
-                vertexLocation: contextData.vertexLocation || defaultSettings.vertexLocation,
-                vertexModel: contextData.vertexModel || defaultSettings.vertexModel,
-                googleOAuthClientId: contextData.googleOAuthClientId || defaultSettings.googleOAuthClientId,
-                cloudEndpoint: contextData.cloudEndpoint || defaultSettings.cloudEndpoint, // Add this line
+                backendServiceUrl: contextData.backendServiceUrl || defaultSettings.backendServiceUrl,
               };
             }
           }
@@ -59,14 +49,14 @@ export const SettingsProvider: React.FC<{children: ReactNode}> = ({ children }) 
         }
 
         // If extension context has settings, use them
-        if (contextSettings) {
+        if (contextSettings && contextSettings.backendServiceUrl) {
           setSettings(contextSettings);
         } else {
           // Fallback to user attributes
           const userSettings = await loadUserSettings(core40SDK, extensionSDK);
-          if (userSettings) {
+          if (userSettings && userSettings.backendServiceUrl) {
             setSettings(userSettings);
-            
+
             // Migrate user attributes to extension context for future use
             try {
               await extensionSDK.saveContextData(userSettings);
@@ -74,6 +64,10 @@ export const SettingsProvider: React.FC<{children: ReactNode}> = ({ children }) 
             } catch (err) {
               console.warn('Failed to migrate settings to extension context:', err);
             }
+          } else {
+            // Final fallback to environment variable
+            console.log('Using backend service URL from environment variable');
+            setSettings(defaultSettings);
           }
         }
         
