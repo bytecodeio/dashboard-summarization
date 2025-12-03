@@ -24,7 +24,12 @@ export const generateArbitraryResponse = async (
         return { error: 'Backend service not configured' };
     }
 
-    console.log('Sending request to backend service:', backendServiceUrl);
+    // Ensure the URL ends with /generate endpoint
+    const generateEndpoint = backendServiceUrl.endsWith('/generate') 
+        ? backendServiceUrl 
+        : `${backendServiceUrl.replace(/\/$/, '')}/generate`;
+    
+    console.log('Sending request to backend service:', generateEndpoint);
     
     // Create conversation history context (keep last 5 exchanges to manage context size)
     const recentHistory = conversationHistory ? conversationHistory.slice(-5) : [];
@@ -42,7 +47,7 @@ export const generateArbitraryResponse = async (
 
     try {
         // Make request to backend service (no auth needed - backend handles Vertex AI auth)
-        const response = await extensionSDK.fetchProxy(backendServiceUrl, {
+        const response = await extensionSDK.fetchProxy(generateEndpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
