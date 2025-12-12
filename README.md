@@ -104,9 +104,85 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 - **POST `/generate`** - Main AI generation endpoint
   - Request: `{ prompt, dashboardContext, queryData, additionalData, conversationHistory }`
   - Response: `{ response: "AI generated text" }`
+  - **Requires header:** `dashboard_summary_api_secret` (validated against backend secret)
 
 - **GET `/health`** - Health check endpoint
   - Response: `{ status: "ok" }`
+  - No authentication required
+
+#### Securing the Backend with API Secret
+
+The backend requires an API secret header on all requests (except health check). This secret must be configured in two places:
+
+**1. Create Secret in Google Cloud Secret Manager:**
+
+```bash
+# Create the secret
+gcloud secrets create dashboard-summary-api-secret \
+  --replication-policy="automatic" \
+  --data-file=- <<< "your-secret-value-here"
+
+# Grant Cloud Run service account access
+gcloud secrets add-iam-policy-binding dashboard-summary-api-secret \
+  --member="serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+**2. Configure Cloud Run with Secret:**
+
+When deploying to Cloud Run, add the secret as an environment variable:
+
+```bash
+gcloud run deploy dashboard-summarization-backend \
+  --image gcr.io/YOUR_PROJECT_ID/dashboard-summarization-backend \
+  --platform managed \
+  --region us-central1 \
+  --set-env-vars PROJECT=YOUR_PROJECT_ID,REGION=us-central1,MODEL=gemini-2.0-flash-exp \
+  --update-secrets DASHBOARD_SUMMARY_API_SECRET=dashboard-summary-api-secret:latest \
+  # ... other flags
+```
+
+Or if using the deploy script, ensure it handles the secret configuration.
+
+**3. Configure User Attribute in Looker:**
+
+Create a hidden scoped user attribute to securely pass the API secret from Looker to the extension:
+
+1. Go to **Admin** → **User Attributes**
+2. Click **+ New User Attribute**
+3. Configure as follows:
+   - **Name:** `dashboard_summarization_dashboard_summary_api_secret` (scoped to your extension)
+   - **Label:** `Dashboard Summary API Secret`
+   - **Type:** String
+   - **Hidden:** ✓ Check this box
+   - **User Access:** Admins can view and edit
+   - **Default Value:** Set to your secret value (same as in GCP Secret Manager)
+
+4. Click **Save**
+
+**4. Update Extension Configuration:**
+
+The extension frontend already handles passing this secret securely via the Looker SDK:
+
+```typescript
+const response = await extensionSDK.serverProxy(generateEndpoint, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'dashboard_summary_api_secret': extensionSDK.createSecretKeyTag('dashboard_summary_api_secret') 
+    },
+    body: JSON.stringify(requestBody)
+});
+```
+
+The `createSecretKeyTag()` method tells Looker to replace this tag with the actual user attribute value at request time. This ensures the secret is never exposed in the frontend code or network requests.
+
+**Important Security Notes:**
+- The API secret is never visible in browser console or network tabs
+- Only Looker admin can set the initial user attribute value
+- The secret is transmitted securely through Looker's serverProxy
+- Change the secret value if it's ever compromised
+- Use a strong, randomly-generated secret (example: use `openssl rand -base64 32`)
 
 ### 2. Configure Frontend Extension
 

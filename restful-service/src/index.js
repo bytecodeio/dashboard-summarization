@@ -35,6 +35,41 @@ dotenv.config();
 app.use(cors());
 app.use(express.json()); // To parse JSON bodies
 
+// Middleware to validate API secret
+app.use((req, res, next) => {
+    // Skip validation for health check endpoint
+    if (req.path === '/health') {
+        return next();
+    }
+
+    const apiSecret = req.headers['dashboard_summary_api_secret'];
+    const expectedSecret = process.env.DASHBOARD_SUMMARY_API_SECRET;
+
+    if (!apiSecret) {
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Missing dashboard_summary_api_secret header'
+        });
+    }
+
+    if (!expectedSecret) {
+        console.error('DASHBOARD_SUMMARY_API_SECRET not configured in environment');
+        return res.status(500).json({
+            error: 'Server configuration error',
+            message: 'API secret not configured'
+        });
+    }
+
+    if (apiSecret !== expectedSecret) {
+        return res.status(403).json({
+            error: 'Forbidden',
+            message: 'Invalid API secret'
+        });
+    }
+
+    next();
+});
+
 // Initialize Vertex with your Cloud project and location
 const vertexAI = new VertexAI({
     project: process.env.PROJECT || 'explore-assistant-cf-mis',

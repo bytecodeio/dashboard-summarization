@@ -47,10 +47,11 @@ export const generateArbitraryResponse = async (
 
     try {
         // Make request to backend service (no auth needed - backend handles Vertex AI auth)
-        const response = await extensionSDK.fetchProxy(generateEndpoint, {
+        const response = await extensionSDK.serverProxy(generateEndpoint, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'dashboard_summary_api_secret': extensionSDK.createSecretKeyTag('dashboard_summary_api_secret') 
             },
             body: JSON.stringify(requestBody)
         });

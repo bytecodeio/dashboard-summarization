@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-PROJECT_ID="explore-assistant-cf-mis"
+PROJECT_ID="colin-terraform-testing"
 REGION="us-central1"
 SERVICE_NAME="dashboard-summarization-backend"
 IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
